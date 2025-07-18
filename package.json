@@ -1,0 +1,14 @@
+{
+  "name": "sentiric-user-service",
+  "version": "0.1.0",
+  "description": "Manages users and authentication for the Sentiric platform.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "author": "Sentiric Team",
+  "license": "MIT"
+}
