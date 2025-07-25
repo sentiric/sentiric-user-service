@@ -1,12 +1,18 @@
-
 services:
   user-service:
     image: ${DOCKER_REGISTRY:-ghcr.io/sentiric}/sentiric-user-service:${TAG:-latest}
-    build: { context: . }
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: sentiric_user_service
-    env_file: [./.env]
-    networks: [sentiric-net]
-    restart: unless-stopped
+    env_file:
+      - ./.env
+    # Dahili bir servis olduğu için dışarıya port açmaya gerek yok.
+    # Diğer konteynerler, docker ağı üzerinden servis adıyla erişir.
+    networks:
+      - sentiric-net
+    restart: always
+
 networks:
   sentiric-net:
     name: ${NETWORK_NAME:-sentiric-net}

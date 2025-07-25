@@ -1,7 +1,30 @@
-FROM node:18-alpine
+# --- AŞAMA 1: Derleme (Builder) ---
+# Go'nun resmi imajını temel al
+FROM golang:1.22-alpine AS builder
+
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+
+# Önce sadece bağımlılık dosyalarını kopyala (önbellekleme için)
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Şimdi kaynak kodunu ve üretilmiş gRPC kodunu kopyala
 COPY . .
-EXPOSE 3001
-CMD [ "npm", "start" ]
+
+# Uygulamayı derle (statik olarak, C kütüphaneleri olmadan)
+RUN CGO_ENABLED=0 GOOS=linux go build -o /user-service .
+
+# --- AŞAMA 2: Çalıştırma (Runtime) ---
+# Sadece derlenmiş binary'i içeren minimal bir scratch imajı kullan
+FROM scratch
+
+WORKDIR /
+
+# Derlenmiş uygulamayı builder aşamasından kopyala
+COPY --from=builder /user-service .
+
+# gRPC portunu belirt
+EXPOSE 50053
+
+# Konteyner başladığında uygulamayı çalıştır
+ENTRYPOINT ["/user-service"]

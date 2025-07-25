@@ -1,37 +1,40 @@
-# Sentiric User Service
+## Getting Started
 
-**Description:** Manages user accounts, authentication credentials, and active SIP registrations securely and persistently for the Sentiric platform.
+### Prerequisites
+- Go (version 1.22 or later)
+- protoc (Protocol Buffers Compiler)
+- Go gRPC plugins (`protoc-gen-go`, `protoc-gen-go-grpc`)
 
-**Core Responsibilities:**
-*   Storing and updating active SIP registrations (Contact URI, expiration time, associated IP/port).
-*   Performing SIP Digest Authentication based on user credentials (HA1 hashes).
-*   Providing APIs for CRUD (Create, Read, Update, Delete) operations on user accounts.
-*   Finding user information by extension or username.
+### Local Development
 
-**Technologies:**
-*   Node.js (or Go)
-*   Express/Fiber (for REST API)
-*   Database connection (e.g., PostgreSQL, MongoDB, Redis).
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/sentiric/sentiric-user-service.git
+    cd sentiric-user-service
+    ```
 
-**API Interactions (As an API Provider):**
-*   Exposes APIs for `sentiric-sip-server` (for authentication, registration updates, user lookups).
-*   Exposes APIs for `sentiric-admin-ui` (for user CRUD operations).
+2.  **Generate gRPC Code:** This project depends on `.proto` files from the `sentiric-core-interfaces` repository. You need to generate the Go code from these contracts.
+    
+    **Option A (Recommended): Using the central Makefile**
+    - Navigate to the `sentiric-core-interfaces` repository.
+    - Run the make command:
+      ```bash
+      make gen-go
+      ```
+    - This will generate the necessary files in a `gen/` directory at the root of your workspace. You may need to copy the relevant `gen/user/v1` folder into this project.
+    
+    **Option B (Manual Generation):**
+    - Ensure `sentiric-core-interfaces` is cloned next to this repository.
+    - Run the `protoc` command directly:
+      ```bash
+      mkdir -p gen/user/v1
+      protoc --proto_path=../sentiric-core-interfaces/proto \
+             --go_out=./gen --go_opt=paths=source_relative \
+             --go-grpc_out=./gen --go-grpc_opt=paths=source_relative \
+             ../sentiric-core-interfaces/proto/sentiric/user/v1/user.proto
+      ```
 
-**Local Development:**
-1.  Clone this repository: `git clone https://github.com/sentiric/sentiric-user-service.git`
-2.  Navigate into the directory: `cd sentiric-user-service`
-3.  Install dependencies: `npm install` (Node.js) or `go mod tidy` (Go).
-4.  Create a `.env` file from `.env.example` to configure database connections and authentication realm.
-5.  Start the service: `npm start` (Node.js) or `go run main.go` (Go).
-
-**Configuration:**
-Refer to `config/` directory and `.env.example` for service-specific configurations, including database connection details and authentication realm.
-
-**Deployment:**
-Designed for containerized deployment (e.g., Docker, Kubernetes). Refer to `sentiric-infrastructure`.
-
-**Contributing:**
-We welcome contributions! Please refer to the [Sentiric Governance](https://github.com/sentiric/sentiric-governance) repository for coding standards and contribution guidelines.
-
-**License:**
-This project is licensed under the [License](LICENSE).
+3.  **Run the service:**
+    ```bash
+    go run main.go
+    ```
