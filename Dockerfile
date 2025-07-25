@@ -1,6 +1,6 @@
 # --- AŞAMA 1: Derleme (Builder) ---
-# Go'nun resmi imajını temel al
-FROM golang:1.22-alpine AS builder
+# Daha yeni bir Go sürümü kullan (>=1.24.5)
+FROM golang:1.24.5-alpine AS builder
 
 WORKDIR /app
 
@@ -15,7 +15,6 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /user-service .
 
 # --- AŞAMA 2: Çalıştırma (Runtime) ---
-# Sadece derlenmiş binary'i içeren minimal bir scratch imajı kullan
 FROM scratch
 
 WORKDIR /
@@ -23,8 +22,6 @@ WORKDIR /
 # Derlenmiş uygulamayı builder aşamasından kopyala
 COPY --from=builder /user-service .
 
-# gRPC portunu belirt
 EXPOSE 50053
 
-# Konteyner başladığında uygulamayı çalıştır
 ENTRYPOINT ["/user-service"]
