@@ -7,8 +7,17 @@ services:
     container_name: sentiric_user_service
     env_file:
       - ./.env
-    # Dahili bir servis olduğu için dışarıya port açmaya gerek yok.
-    # Diğer konteynerler, docker ağı üzerinden servis adıyla erişir.
+    # YENİ EKLENEN BÖLÜM:
+    environment:
+      # Bu değişken, ana .env dosyasından gelecek olan POSTGRES_URL'i kullanır.
+      # Go kodumuz bu DATABASE_URL değişkenini okuyacak.
+      - DATABASE_URL=${POSTGRES_URL}
+      - GRPC_PORT=${GRPC_PORT_USER:-50053}
+    # user-service'in, postgres servisi sağlıklı bir şekilde çalışmaya başlamadan
+    # başlamamasını sağlıyoruz. Bu çok önemli.
+    # depends_on:
+    #   postgres:
+    #     condition: service_healthy
     networks:
       - sentiric-net
     restart: always
