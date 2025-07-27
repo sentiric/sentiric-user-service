@@ -88,7 +88,7 @@ func main() {
 	userv1.RegisterUserServiceServer(s, &server{db: db})
 	reflection.Register(s)
 
-	log.Printf("gRPC server listening at %v", lis.Addr())
+	log.Printf("gRPC user-service listening at %v", lis.Addr())
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
