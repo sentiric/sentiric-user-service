@@ -9,10 +9,8 @@ services:
       - ./.env
     # YENİ EKLENEN BÖLÜM:
     environment:
-      # Bu değişken, ana .env dosyasından gelecek olan POSTGRES_URL'i kullanır.
-      # Go kodumuz bu DATABASE_URL değişkenini okuyacak.
+      - GRPC_PORT=${INTERNAL_GRPC_PORT_USER}
       - DATABASE_URL=${POSTGRES_URL}
-      - GRPC_PORT=${GRPC_PORT_USER:-50053}
     # user-service'in, postgres servisi sağlıklı bir şekilde çalışmaya başlamadan
     # başlamamasını sağlıyoruz. Bu çok önemli.
     # depends_on:
