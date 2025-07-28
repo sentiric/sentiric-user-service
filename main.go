@@ -1,3 +1,5 @@
+// DOSYA: sentiric-user-service/main.go (Genesis Mimarisi Uyumlu)
+
 package main
 
 import (
@@ -7,7 +9,7 @@ import (
 	"log"
 	"net"
 	"os"
-	"time" // Tekrar deneme mantığı için eklendi
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -15,7 +17,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
-
 	userv1 "github.com/sentiric/sentiric-contracts/gen/go/sentiric/user/v1"
 )
 
@@ -27,11 +28,12 @@ type server struct {
 func (s *server) GetUser(ctx context.Context, req *userv1.GetUserRequest) (*userv1.GetUserResponse, error) {
 	log.Printf("GetUser request received for user ID: %s", req.GetId())
 
-	query := "SELECT id, name, email, tenant_id FROM users WHERE id = $1"
+	query := "SELECT id, name, tenant_id, user_type FROM users WHERE id = $1"
 	row := s.db.QueryRowContext(ctx, query, req.GetId())
 
 	var user userv1.User
-	err := row.Scan(&user.Id, &user.Name, &user.Email, &user.TenantId)
+	// email alanı opsiyonel olduğu için ona göre scan yapmalıyız
+	err := row.Scan(&user.Id, &user.Name, &user.TenantId, &user.UserType)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("User not found for ID: %s", req.GetId())
@@ -45,6 +47,37 @@ func (s *server) GetUser(ctx context.Context, req *userv1.GetUserRequest) (*user
 	return &userv1.GetUserResponse{User: &user}, nil
 }
 
+// YENİ METOD
+func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) (*userv1.CreateUserResponse, error) {
+	log.Printf("CreateUser request received for user ID: %s", req.GetId())
+
+	user := &userv1.User{
+		Id:       req.GetId(),
+		Name:     req.GetName(),
+		TenantId: req.GetTenantId(),
+		UserType: req.GetUserType(),
+	}
+
+	// `name` alanı opsiyonel olduğu için, eğer boş gelirse DB'ye NULL olarak gitmeli.
+	var sqlName sql.NullString
+	if user.Name != "" {
+		sqlName = sql.NullString{String: user.Name, Valid: true}
+	}
+
+	query := "INSERT INTO users (id, name, tenant_id, user_type) VALUES ($1, $2, $3, $4) RETURNING id"
+	err := s.db.QueryRowContext(ctx, query, user.Id, sqlName, user.TenantId, user.UserType).Scan(&user.Id)
+
+	if err != nil {
+		// Zaten var olan bir kullanıcıyı eklemeye çalışırsak ne olacağını da yönetebiliriz,
+		// ama şimdilik genel bir hata dönelim.
+		log.Printf("Failed to create user: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to create user: %v", err)
+	}
+
+	log.Printf("Successfully created user with ID: %s", user.Id)
+	return &userv1.CreateUserResponse{User: user}, nil
+}
+
 func main() {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -53,7 +86,6 @@ func main() {
 
 	var db *sql.DB
 	var err error
-
 	maxRetries := 5
 	for i := 0; i < maxRetries; i++ {
 		db, err = sql.Open("pgx", dbURL)
@@ -84,7 +116,6 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	// Bu satır, 'server' struct'ını ve metodlarını 'kullanılır' hale getirir.
 	userv1.RegisterUserServiceServer(s, &server{db: db})
 	reflection.Register(s)
 
