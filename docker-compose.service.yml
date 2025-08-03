@@ -1,26 +1,52 @@
-services:
-  user-service:
-    image: ${DOCKER_REGISTRY:-ghcr.io/sentiric}/sentiric-user-service:${TAG:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: sentiric_user_service
-    env_file:
-      - ./.env
-    # YENİ EKLENEN BÖLÜM:
-    environment:
-      - GRPC_PORT=${INTERNAL_GRPC_PORT_USER}
-      - DATABASE_URL=${POSTGRES_URL}
-    # user-service'in, postgres servisi sağlıklı bir şekilde çalışmaya başlamadan
-    # başlamamasını sağlıyoruz. Bu çok önemli.
-    # depends_on:
-    #   postgres:
-    #     condition: service_healthy
-    networks:
-      - sentiric-net
-    restart: always
-
 networks:
   sentiric-net:
     name: ${NETWORK_NAME:-sentiric-net}
     driver: bridge
+
+volumes:
+  postgres_data:
+
+services:
+  # VERİ KATMANI
+  postgres:
+    image: postgres:16-alpine
+    env_file:
+      - ./.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../sentiric-infrastructure/postgres-init:/docker-entrypoint-initdb.d
+    # ports:
+    #   - "${POSTGRES_DB_PORT}:${POSTGRES_DB_PORT}"
+    networks:
+      - sentiric-net
+    profiles:
+      - default
+      - data
+    restart: always
+
+  # UYGULAMA SERVİSLERİ
+  user-service:
+
+    build:
+      context: .
+      dockerfile: Dockerfile         
+      args:
+        SERVICE_NAME: sentiric-user-service
+
+    env_file: 
+      - ./.env
+
+    volumes:
+      - ../sentiric-infrastructure/tls/certs:/etc/sentiric/tls:ro
+      
+    # ports:
+    #   - "${USER_SERVICE_GRPC_PORT}:${USER_SERVICE_GRPC_PORT}"
+
+    networks:
+      - sentiric-net
+
+    profiles:
+      - default
+      - app
+
+    restart: always
