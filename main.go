@@ -7,13 +7,15 @@ import (
 	"database/sql"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"time"
 
+	"github.com/sentiric/sentiric-user-service/internal/logger" // YENİ
+
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
+	"github.com/rs/zerolog" // YENİ
 	userv1 "github.com/sentiric/sentiric-contracts/gen/go/sentiric/user/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -22,18 +24,22 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Sabitler ve Global Değişkenler
+const serviceName = "user-service"
+
+var log zerolog.Logger
+
 type server struct {
 	userv1.UnimplementedUserServiceServer
 	db *sql.DB
 }
 
 func main() {
-	log.Println("Sentiric User Service başlatılıyor...")
+	godotenv.Load()
+	log = logger.New(serviceName)
 
-	// .env yükle
-	_ = godotenv.Load()
+	log.Info().Msg("Sentiric User Service başlatılıyor...")
 
-	// Ortam değişkenlerini al ve doğrula
 	dbURL := getEnvOrFail("POSTGRES_URL")
 	port := getEnv("USER_SERVICE_GRPC_PORT", "50053")
 	certPath := getEnvOrFail("USER_SERVICE_CERT_PATH")
@@ -45,51 +51,53 @@ func main() {
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
 	if err != nil {
-		log.Fatalf("gRPC portu dinlenemedi: %v", err)
+		log.Fatal().Err(err).Msg("gRPC portu dinlenemedi")
 	}
 
 	grpcServer := grpc.NewServer(grpc.Creds(loadServerTLS(certPath, keyPath, caPath)))
 	userv1.RegisterUserServiceServer(grpcServer, &server{db: db})
 	reflection.Register(grpcServer)
 
-	log.Printf("gRPC sunucusu %s portunda dinleniyor...", port)
+	log.Info().Str("port", port).Msg("gRPC sunucusu dinleniyor...")
 	if err := grpcServer.Serve(listener); err != nil {
-		log.Fatalf("gRPC sunucusu başlatılamadı: %v", err)
+		log.Fatal().Err(err).Msg("gRPC sunucusu başlatılamadı")
 	}
 }
 
-// =============================
-// === Database ve TLS Setup ===
-// =============================
+// ... (Database ve TLS fonksiyonları aynı, sadece loglama çağrıları güncellendi) ...
 
 func connectToDBWithRetry(url string, maxRetries int) *sql.DB {
 	var db *sql.DB
 	var err error
 	for i := 0; i < maxRetries; i++ {
 		db, err = sql.Open("pgx", url)
-		if err == nil && db.Ping() == nil {
-			log.Println("Veritabanına bağlantı başarılı.")
-			return db
+		if err == nil {
+			if pingErr := db.Ping(); pingErr == nil {
+				log.Info().Msg("Veritabanına bağlantı başarılı.")
+				return db
+			} else {
+				err = pingErr
+			}
 		}
-		log.Printf("Veritabanına bağlanılamadı (deneme %d/%d): %v", i+1, maxRetries, err)
+		log.Warn().Err(err).Int("attempt", i+1).Int("max_attempts", maxRetries).Msg("Veritabanına bağlanılamadı, 5 saniye sonra tekrar denenecek...")
 		time.Sleep(5 * time.Second)
 	}
-	log.Fatalf("Veritabanına bağlanılamadı (%d deneme): %v", maxRetries, err)
+	log.Fatal().Err(err).Msgf("Veritabanına bağlanılamadı (%d deneme)", maxRetries)
 	return nil
 }
 
 func loadServerTLS(certPath, keyPath, caPath string) credentials.TransportCredentials {
 	certificate, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
-		log.Fatalf("Sunucu sertifikası yüklenemedi: %v", err)
+		log.Fatal().Err(err).Msg("Sunucu sertifikası yüklenemedi")
 	}
 	caCert, err := ioutil.ReadFile(caPath)
 	if err != nil {
-		log.Fatalf("CA sertifikası okunamadı: %v", err)
+		log.Fatal().Err(err).Msg("CA sertifikası okunamadı")
 	}
 	caPool := x509.NewCertPool()
 	if !caPool.AppendCertsFromPEM(caCert) {
-		log.Fatal("CA sertifikası havuza eklenemedi.")
+		log.Fatal().Msg("CA sertifikası havuza eklenemedi.")
 	}
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{certificate},
@@ -99,33 +107,35 @@ func loadServerTLS(certPath, keyPath, caPath string) credentials.TransportCreden
 	return credentials.NewTLS(tlsConfig)
 }
 
-// =====================
-// === gRPC Servisler ===
-// =====================
-
 func (s *server) GetUser(ctx context.Context, req *userv1.GetUserRequest) (*userv1.GetUserResponse, error) {
-	log.Printf("GetUser: %s", req.GetId())
+	l := log.With().Str("method", "GetUser").Str("user_id", req.GetId()).Logger()
+	l.Info().Msg("İstek alındı")
+
 	query := "SELECT id, name, tenant_id, user_type FROM users WHERE id = $1"
 	row := s.db.QueryRowContext(ctx, query, req.GetId())
 
 	var user userv1.User
 	var name sql.NullString
 	err := row.Scan(&user.Id, &name, &user.TenantId, &user.UserType)
-	if err == sql.ErrNoRows {
-		return nil, status.Errorf(codes.NotFound, "Kullanıcı bulunamadı: %s", req.GetId())
-	}
 	if err != nil {
-		log.Printf("DB hatası: %v", err)
+		if err == sql.ErrNoRows {
+			l.Warn().Msg("Kullanıcı bulunamadı")
+			return nil, status.Errorf(codes.NotFound, "Kullanıcı bulunamadı: %s", req.GetId())
+		}
+		l.Error().Err(err).Msg("Veritabanı sorgu hatası")
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası: %v", err)
 	}
 	if name.Valid {
 		user.Name = name.String
 	}
+	l.Info().Msg("Kullanıcı başarıyla bulundu")
 	return &userv1.GetUserResponse{User: &user}, nil
 }
 
 func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) (*userv1.CreateUserResponse, error) {
-	log.Printf("CreateUser: %s", req.GetId())
+	l := log.With().Str("method", "CreateUser").Str("user_id", req.GetId()).Str("tenant_id", req.GetTenantId()).Logger()
+	l.Info().Msg("İstek alındı")
+
 	user := &userv1.User{
 		Id:       req.GetId(),
 		Name:     req.GetName(),
@@ -146,15 +156,12 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 		RETURNING id`
 	err := s.db.QueryRowContext(ctx, query, user.Id, sqlName, user.TenantId, user.UserType).Scan(&user.Id)
 	if err != nil {
-		log.Printf("Kullanıcı oluşturulamadı: %v", err)
+		l.Error().Err(err).Msg("Kullanıcı oluşturulamadı/güncellenemedi")
 		return nil, status.Errorf(codes.Internal, "Kullanıcı oluşturulamadı: %v", err)
 	}
+	l.Info().Msg("Kullanıcı başarıyla oluşturuldu/güncellendi")
 	return &userv1.CreateUserResponse{User: user}, nil
 }
-
-// ============================
-// === Yardımcı Fonksiyonlar ===
-// ============================
 
 func getEnv(key string, fallback string) string {
 	if val := os.Getenv(key); val != "" {
@@ -166,7 +173,7 @@ func getEnv(key string, fallback string) string {
 func getEnvOrFail(key string) string {
 	val := os.Getenv(key)
 	if val == "" {
-		log.Fatalf("Ortam değişkeni tanımlı değil: %s", key)
+		log.Fatal().Str("variable", key).Msg("Gerekli ortam değişkeni tanımlı değil")
 	}
 	return val
 }
