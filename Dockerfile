@@ -27,6 +27,6 @@ ARG SERVICE_NAME
 WORKDIR /app
 COPY --from=builder /app/${SERVICE_NAME} .
 
-COPY --from=builder /app/${SERVICE_NAME} /app/main
-
-ENTRYPOINT ["/app/main"]
+# ESKİ HALİ: ENTRYPOINT ["/app/main"]
+# YENİ ve DOĞRU HALİ:
+ENTRYPOINT ["./sentiric-user-service"]
