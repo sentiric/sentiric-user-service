@@ -4,7 +4,7 @@
 [![Language](https://img.shields.io/badge/language-Go-blue.svg)]()
 [![Protocol](https://img.shields.io/badge/protocol-gRPC_(mTLS)-green.svg)]()
 
-**Sentiric User Service**, Sentiric platformundaki tüm kimlik ve varlık yönetiminin merkezi ve "tek doğruluk kaynağıdır". Yüksek performans ve eşzamanlılık için **Go** ile yazılmıştır.
+**Sentiric User Service**, Sentiric platformundaki tüm kimlik ve varlık yönetiminin merkezi ve **tek doğruluk kaynağıdır (Single Source of Truth)**. Yüksek performans ve eşzamanlılık için **Go** ile yazılmıştır.
 
 ## 🎯 Temel Sorumluluklar
 
@@ -23,29 +23,28 @@ Bu servis, platformun "Omnichannel" vizyonunu destekleyen, ölçeklenebilir bir 
 *   **Loglama:** `zerolog` ile yapılandırılmış, ortama duyarlı loglama.
 *   **API Sözleşmeleri:** `sentiric-contracts` reposunda tanımlanan Protobuf dosyaları.
 
-## 🔌 API Etkileşimleri (Server For)
+## 🔌 API Etkileşimleri
 
 Bu servis, diğer iç (backend) servislere gRPC üzerinden hizmet verir.
 
-*   **`sentiric-dialplan-service` (gRPC):** Bir arama geldiğinde, arayanın kim olduğunu ve hangi `tenant`'a ait olduğunu doğrulamak için `FindUserByContact` RPC'sini çağırır.
-*   **`sentiric-api-gateway-service` (gRPC):** Yönetici panelinden gelen kullanıcı yönetimi (CRUD) isteklerini bu servise yönlendirir.
-*   **`sentiric-agent-service` (gRPC):** İş akışları sırasında kullanıcı detaylarına veya yetkilerine erişmek için bu servisi çağırabilir.
+*   **Gelen (Sunucu):**
+    *   `sentiric-dialplan-service` (gRPC): `FindUserByContact`
+    *   `sentiric-api-gateway-service` (gRPC): `CreateUser`, `GetUser`
+    *   `sentiric-agent-service` (gRPC): `CreateUser` (misafirler için)
+*   **Giden (İstemci):**
+    *   `PostgreSQL`: Tüm veritabanı işlemleri.
 
 ## 🚀 Yerel Geliştirme
 
-Bu servis, platformun bir parçası olarak `sentiric-infrastructure` reposundaki merkezi `docker-compose` dosyası ile çalıştırılmak üzere tasarlanmıştır.
-
-1.  **Bağımlılıkları Yükle:**
-    ```bash
-    go mod tidy
-    ```
-2.  **Ortam Değişkenlerini Ayarla:**
-    `.env.example` dosyasını `.env` olarak kopyalayın ve `POSTGRES_URL` gibi gerekli değişkenleri doldurun.
-3.  **Servisi Çalıştır:**
-    ```bash
-    go run main.go
-    ```
+1.  **Bağımlılıkları Yükleyin:** `go mod tidy`
+2.  **Ortam Değişkenlerini Ayarlayın:** `.env.docker` dosyasını `.env` olarak kopyalayın ve `POSTGRES_URL` gibi gerekli değişkenleri doldurun.
+3.  **Servisi Çalıştırın:** `go run main.go`
 
 ## 🤝 Katkıda Bulunma
 
 Katkılarınızı bekliyoruz! Lütfen projenin ana [Sentiric Governance](https://github.com/sentiric/sentiric-governance) reposundaki kodlama standartlarına ve katkıda bulunma rehberine göz atın.
+
+---
+## 🏛️ Anayasal Konum
+
+Bu servis, [Sentiric Anayasası'nın (v11.0)](https://github.com/sentiric/sentiric-governance/blob/main/docs/blueprint/Architecture-Overview.md) **Zeka & Orkestrasyon Katmanı**'nda yer alan merkezi bir bileşendir.

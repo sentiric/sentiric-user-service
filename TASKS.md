@@ -1,39 +1,43 @@
-# Sentiric User Service - Görev Listesi ve Yol Haritası
+# 👤 Sentiric User Service - Görev Listesi
 
-Bu belge, `user-service`'in geliştirme önceliklerini ve gelecekte yapılacak önemli görevleri takip eder.
-
----
-
-## Faz 1: Çekirdek Altyapı Entegrasyonu (Mevcut Odak)
-
-Bu fazın amacı, servisin platformun geri kalanıyla konuşabilen, çalışan bir gRPC iskeleti haline getirilmesidir.
-
--   [x] **Temel gRPC Sunucusu Implementasyonu**
-    -   **Açıklama:** `user.proto`'da tanımlanan `AuthenticateUser` RPC'sini implemente eden bir gRPC sunucusu oluşturuldu.
-    -   **Durum:** ✅ Tamamlandı.
-    -   **Not:** Bu ilk versiyon, hız ve bağımsız geliştirme için veritabanı yerine **hafızadaki mock verileri** kullanmaktadır.
+Bu belge, `user-service`'in geliştirme yol haritasını ve önceliklerini tanımlar.
 
 ---
 
-## Faz 2: Üretime Hazırlık (Sıradaki Öncelik)
+### Faz 1: Temel Varlık Yönetimi (Mevcut Durum)
 
-Bu faz, servisi gerçek dünya verileriyle çalışacak, güvenilir ve yönetilebilir hale getirmeyi hedefler.
+Bu faz, servisin temel kullanıcı bulma ve oluşturma görevlerini yerine getirmesini hedefler.
 
--   [ ] **PostgreSQL Veritabanı Entegrasyonu**
-    -   **Görev ID:** `user-task-001`
-    -   **Açıklama:** Mevcut hafızadaki mock kullanıcı listesini, kalıcı bir PostgreSQL veritabanı bağlantısıyla değiştir. `AuthenticateUser` RPC'si, gelen telefon numarasını `customers` tablosunda sorgulamalıdır.
-    -   **Kabul Kriterleri:**
-        -   [ ] Veritabanı bağlantı detayları ortam değişkenlerinden (`DATABASE_URL`) okunmalıdır.
-        -   [ ] Gerekli tablo şeması `sentiric-db-models` reposunda tanımlanmalı veya burada belgelenmelidir.
-        -   [ ] Başarılı ve başarısız veritabanı sorguları için loglama eklenmelidir.
+-   [x] **gRPC Sunucusu:** `user.proto`'da tanımlanan RPC'leri implemente eden sunucu.
+-   [x] **Veritabanı Entegrasyonu:** PostgreSQL'e bağlanma ve sorgu yapma.
+-   [x] **`FindUserByContact` RPC:** Bir iletişim bilgisine göre kullanıcıyı ve tüm iletişim kanallarını getirme.
+-   [x] **`CreateUser` RPC:** Yeni bir kullanıcı profili ve ona bağlı ilk iletişim kanalını atomik bir işlemle (transaction) oluşturma.
+-   [x] **`GetUser` RPC:** Bir `user_id`'ye göre kullanıcıyı ve tüm kanallarını getirme.
+
+---
+
+### Faz 2: Tam CRUD ve Gelişmiş Yönetim (Sıradaki Öncelik)
+
+Bu faz, servisi `dashboard-ui` üzerinden tam teşekküllü bir kullanıcı yönetimi merkezi haline getirmeyi hedefler.
+
+-   [ ] **Görev ID: USER-001 - `UpdateUser` RPC**
+    -   **Açıklama:** Bir kullanıcının adını veya tipini güncellemek için bir RPC ekle.
     -   **Durum:** ⬜ Planlandı.
 
--   [ ] **CRUD Operasyonları için gRPC Endpoint'leri Ekleme**
-    -   **Görev ID:** `user-task-002`
-    -   **Açıklama:** Yönetim panelinin (`dashboard-ui`) kullanıcıları yönetebilmesi için `CreateUser`, `GetUser`, `UpdateUser`, `DeleteUser` gibi RPC'leri `user.proto`'ya ve servise ekle.
+-   [ ] **Görev ID: USER-002 - `DeleteUser` RPC**
+    -   **Açıklama:** Bir kullanıcıyı ve ona bağlı tüm iletişim kanallarını güvenli bir şekilde (soft delete veya hard delete) silen bir RPC ekle.
     -   **Durum:** ⬜ Planlandı.
 
--   [ ] **Yapılandırılmış Loglamayı Geliştirme**
-    -   **Görev ID:** `user-task-003`
-    -   **Açıklama:** Tüm loglara `trace_id` ve `tenant_id` gibi, dağıtık sistemlerde hata ayıklamayı kolaylaştıracak bağlam bilgilerini ekle.
+-   [ ] **Görev ID: USER-003 - İletişim Kanalı Yönetimi RPC'leri**
+    -   **Açıklama:** Mevcut bir kullanıcıya yeni bir iletişim kanalı eklemek (`AddContact`), bir kanalı güncellemek (`UpdateContact`) veya silmek (`DeleteContact`) için RPC'ler ekle.
+    -   **Durum:** ⬜ Planlandı.
+
+---
+
+### Faz 3: Yetkilendirme ve Roller
+
+Bu faz, servise daha granüler erişim kontrolü yetenekleri kazandırmayı hedefler.
+
+-   [ ] **Görev ID: USER-004 - Rol Yönetimi**
+    -   **Açıklama:** `roles` ve `user_roles` tabloları ekleyerek, kullanıcılara "admin", "agent", "supervisor" gibi roller atama yeteneği ekle.
     -   **Durum:** ⬜ Planlandı.
