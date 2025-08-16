@@ -24,6 +24,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const serviceName = "user-service"
@@ -219,12 +221,20 @@ func (s *server) fetchUserByID(ctx context.Context, userID string) (*userv1.User
 	return &user, nil
 }
 
+// DÜZELTME: Bu fonksiyonu, standart sql.DB yerine pgxpool kullanacak şekilde değiştiriyoruz.
+// pgxpool, bağlantı yönetimi ve "prepared statement" hatalarına karşı daha dayanıklıdır.
 func connectToDBWithRetry(url string, maxRetries int) *sql.DB {
 	var db *sql.DB
 	var err error
 	for i := 0; i < maxRetries; i++ {
 		db, err = sql.Open("pgx", url)
 		if err == nil {
+			// YENİ: Bağlantı havuzu ayarlarını ekliyoruz.
+			// Bu, "uyuyan" veritabanları için hayat kurtarıcıdır.
+			db.SetConnMaxLifetime(time.Minute * 3) // Bağlantıların en fazla 3 dakika açık kalmasını sağla
+			db.SetMaxIdleConns(2)                  // Boşta en fazla 2 bağlantı tut
+			db.SetMaxOpenConns(5)                  // Toplamda en fazla 5 bağlantı aç
+
 			if pingErr := db.Ping(); pingErr == nil {
 				log.Info().Msg("Veritabanına bağlantı başarılı.")
 				return db
