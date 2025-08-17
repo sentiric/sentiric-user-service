@@ -1,4 +1,3 @@
-// ========== FILE: sentiric-user-service/main.go ==========
 package main
 
 import (
@@ -24,8 +23,6 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
-
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const serviceName = "user-service"
@@ -81,12 +78,10 @@ func main() {
 func (s *server) GetUser(ctx context.Context, req *userv1.GetUserRequest) (*userv1.GetUserResponse, error) {
 	l := getLoggerWithTraceID(ctx, log).With().Str("method", "GetUser").Str("user_id", req.GetUserId()).Logger()
 	l.Info().Msg("Kullanıcı ID ile istek alındı")
-
 	user, err := s.fetchUserByID(ctx, req.GetUserId())
 	if err != nil {
 		return nil, err
 	}
-
 	return &userv1.GetUserResponse{User: user}, nil
 }
 
@@ -94,8 +89,9 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 	l := getLoggerWithTraceID(ctx, log).With().Str("method", "FindUserByContact").Str("contact_value", req.GetContactValue()).Logger()
 	l.Info().Msg("İletişim bilgisi ile kullanıcı arama isteği alındı")
 
+	// DÜZELTME: preferred_language_code alanını da seçiyoruz.
 	query := `
-		SELECT u.id, u.name, u.tenant_id, u.user_type
+		SELECT u.id, u.name, u.tenant_id, u.user_type, u.preferred_language_code
 		FROM users u
 		JOIN contacts c ON u.id = c.user_id
 		WHERE c.contact_type = $1 AND c.contact_value = $2
@@ -103,8 +99,8 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 	row := s.db.QueryRowContext(ctx, query, req.GetContactType(), req.GetContactValue())
 
 	var user userv1.User
-	var name sql.NullString
-	err := row.Scan(&user.Id, &name, &user.TenantId, &user.UserType)
+	var name, langCode sql.NullString // DÜZELTME: İki nullable alan için değişkenler
+	err := row.Scan(&user.Id, &name, &user.TenantId, &user.UserType, &langCode)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -116,10 +112,12 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 	}
 
 	if name.Valid {
-		// DÜZELTME 1: name.String'in adresini (&) atıyoruz.
-		// Bu, string'i *string'e dönüştürür.
 		tempName := name.String
 		user.Name = &tempName
+	}
+	if langCode.Valid { // DÜZELTME: Dil kodunu ata
+		tempLangCode := langCode.String
+		user.PreferredLanguageCode = &tempLangCode
 	}
 
 	contacts, err := s.fetchContactsForUser(ctx, user.Id)
@@ -143,9 +141,10 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 	}
 	defer tx.Rollback()
 
-	userQuery := `INSERT INTO users (name, tenant_id, user_type) VALUES ($1, $2, $3) RETURNING id`
+	// DÜZELTME: preferred_language_code alanını da ekliyoruz.
+	userQuery := `INSERT INTO users (name, tenant_id, user_type, preferred_language_code) VALUES ($1, $2, $3, $4) RETURNING id`
 	var newUserID string
-	err = tx.QueryRowContext(ctx, userQuery, req.Name, req.TenantId, req.UserType).Scan(&newUserID)
+	err = tx.QueryRowContext(ctx, userQuery, req.Name, req.TenantId, req.UserType, req.PreferredLanguageCode).Scan(&newUserID)
 	if err != nil {
 		l.Error().Err(err).Msg("Yeni kullanıcı kaydı başarısız")
 		return nil, status.Errorf(codes.Internal, "Kullanıcı oluşturulamadı: %v", err)
@@ -172,6 +171,39 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 	return &userv1.CreateUserResponse{User: createdUser}, nil
 }
 
+func (s *server) fetchUserByID(ctx context.Context, userID string) (*userv1.User, error) {
+	l := getLoggerWithTraceID(ctx, log)
+	query := "SELECT id, name, tenant_id, user_type, preferred_language_code FROM users WHERE id = $1"
+	row := s.db.QueryRowContext(ctx, query, userID)
+
+	var user userv1.User
+	var name, langCode sql.NullString
+	if err := row.Scan(&user.Id, &name, &user.TenantId, &user.UserType, &langCode); err != nil {
+		if err == sql.ErrNoRows {
+			l.Warn().Str("user_id", userID).Msg("Kullanıcı ID ile bulunamadı")
+			return nil, status.Errorf(codes.NotFound, "Kullanıcı bulunamadı: %s", userID)
+		}
+		l.Error().Err(err).Str("user_id", userID).Msg("Kullanıcı sorgu hatası")
+		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
+	}
+	if name.Valid {
+		tempName := name.String
+		user.Name = &tempName
+	}
+	if langCode.Valid {
+		tempLangCode := langCode.String
+		user.PreferredLanguageCode = &tempLangCode
+	}
+
+	contacts, err := s.fetchContactsForUser(ctx, user.Id)
+	if err != nil {
+		return nil, err
+	}
+	user.Contacts = contacts
+
+	return &user, nil
+}
+
 func (s *server) fetchContactsForUser(ctx context.Context, userID string) ([]*userv1.Contact, error) {
 	query := `SELECT id, user_id, contact_type, contact_value, is_primary FROM contacts WHERE user_id = $1`
 	rows, err := s.db.QueryContext(ctx, query, userID)
@@ -191,50 +223,16 @@ func (s *server) fetchContactsForUser(ctx context.Context, userID string) ([]*us
 	return contacts, nil
 }
 
-func (s *server) fetchUserByID(ctx context.Context, userID string) (*userv1.User, error) {
-	l := getLoggerWithTraceID(ctx, log)
-	query := "SELECT id, name, tenant_id, user_type FROM users WHERE id = $1"
-	row := s.db.QueryRowContext(ctx, query, userID)
-
-	var user userv1.User
-	var name sql.NullString
-	if err := row.Scan(&user.Id, &name, &user.TenantId, &user.UserType); err != nil {
-		if err == sql.ErrNoRows {
-			l.Warn().Str("user_id", userID).Msg("Kullanıcı ID ile bulunamadı")
-			return nil, status.Errorf(codes.NotFound, "Kullanıcı bulunamadı: %s", userID)
-		}
-		l.Error().Err(err).Str("user_id", userID).Msg("Kullanıcı sorgu hatası")
-		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
-	}
-	if name.Valid {
-		// DÜZELTME 2: name.String'in adresini (&) atıyoruz.
-		tempName := name.String
-		user.Name = &tempName
-	}
-
-	contacts, err := s.fetchContactsForUser(ctx, user.Id)
-	if err != nil {
-		return nil, err
-	}
-	user.Contacts = contacts
-
-	return &user, nil
-}
-
-// DÜZELTME: Bu fonksiyonu, standart sql.DB yerine pgxpool kullanacak şekilde değiştiriyoruz.
-// pgxpool, bağlantı yönetimi ve "prepared statement" hatalarına karşı daha dayanıklıdır.
+// ... (connectToDBWithRetry, loadServerTLS, getEnv, getEnvOrFail fonksiyonları aynı kalabilir) ...
 func connectToDBWithRetry(url string, maxRetries int) *sql.DB {
 	var db *sql.DB
 	var err error
 	for i := 0; i < maxRetries; i++ {
 		db, err = sql.Open("pgx", url)
 		if err == nil {
-			// YENİ: Bağlantı havuzu ayarlarını ekliyoruz.
-			// Bu, "uyuyan" veritabanları için hayat kurtarıcıdır.
-			db.SetConnMaxLifetime(time.Minute * 3) // Bağlantıların en fazla 3 dakika açık kalmasını sağla
-			db.SetMaxIdleConns(2)                  // Boşta en fazla 2 bağlantı tut
-			db.SetMaxOpenConns(5)                  // Toplamda en fazla 5 bağlantı aç
-
+			db.SetConnMaxLifetime(time.Minute * 3)
+			db.SetMaxIdleConns(2)
+			db.SetMaxOpenConns(5)
 			if pingErr := db.Ping(); pingErr == nil {
 				log.Info().Msg("Veritabanına bağlantı başarılı.")
 				return db
