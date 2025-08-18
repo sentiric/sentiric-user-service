@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/sentiric/sentiric-user-service/internal/logger"
@@ -89,7 +90,6 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 	l := getLoggerWithTraceID(ctx, log).With().Str("method", "FindUserByContact").Str("contact_value", req.GetContactValue()).Logger()
 	l.Info().Msg("İletişim bilgisi ile kullanıcı arama isteği alındı")
 
-	// DÜZELTME: preferred_language_code alanını da seçiyoruz.
 	query := `
 		SELECT u.id, u.name, u.tenant_id, u.user_type, u.preferred_language_code
 		FROM users u
@@ -97,11 +97,9 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 		WHERE c.contact_type = $1 AND c.contact_value = $2
 	`
 	row := s.db.QueryRowContext(ctx, query, req.GetContactType(), req.GetContactValue())
-
 	var user userv1.User
-	var name, langCode sql.NullString // DÜZELTME: İki nullable alan için değişkenler
+	var name, langCode sql.NullString
 	err := row.Scan(&user.Id, &name, &user.TenantId, &user.UserType, &langCode)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			l.Warn().Msg("İletişim bilgisiyle eşleşen kullanıcı bulunamadı")
@@ -110,22 +108,17 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 		l.Error().Err(err).Msg("Veritabanı sorgu hatası")
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası: %v", err)
 	}
-
 	if name.Valid {
-		tempName := name.String
-		user.Name = &tempName
+		user.Name = &name.String
 	}
-	if langCode.Valid { // DÜZELTME: Dil kodunu ata
-		tempLangCode := langCode.String
-		user.PreferredLanguageCode = &tempLangCode
+	if langCode.Valid {
+		user.PreferredLanguageCode = &langCode.String
 	}
-
 	contacts, err := s.fetchContactsForUser(ctx, user.Id)
 	if err != nil {
 		return nil, err
 	}
 	user.Contacts = contacts
-
 	l.Info().Msg("Kullanıcı başarıyla bulundu")
 	return &userv1.FindUserByContactResponse{User: &user}, nil
 }
@@ -133,15 +126,12 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) (*userv1.CreateUserResponse, error) {
 	l := getLoggerWithTraceID(ctx, log).With().Str("method", "CreateUser").Str("tenant_id", req.GetTenantId()).Logger()
 	l.Info().Msg("Kullanıcı oluşturma isteği alındı")
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		l.Error().Err(err).Msg("Veritabanı transaction başlatılamadı")
 		return nil, status.Error(codes.Internal, "Veritabanı hatası")
 	}
 	defer tx.Rollback()
-
-	// DÜZELTME: preferred_language_code alanını da ekliyoruz.
 	userQuery := `INSERT INTO users (name, tenant_id, user_type, preferred_language_code) VALUES ($1, $2, $3, $4) RETURNING id`
 	var newUserID string
 	err = tx.QueryRowContext(ctx, userQuery, req.Name, req.TenantId, req.UserType, req.PreferredLanguageCode).Scan(&newUserID)
@@ -149,24 +139,20 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 		l.Error().Err(err).Msg("Yeni kullanıcı kaydı başarısız")
 		return nil, status.Errorf(codes.Internal, "Kullanıcı oluşturulamadı: %v", err)
 	}
-
 	contactQuery := `INSERT INTO contacts (user_id, contact_type, contact_value, is_primary) VALUES ($1, $2, $3, $4)`
 	_, err = tx.ExecContext(ctx, contactQuery, newUserID, req.InitialContact.GetContactType(), req.InitialContact.GetContactValue(), true)
 	if err != nil {
 		l.Error().Err(err).Msg("Yeni kullanıcının iletişim bilgisi kaydedilemedi")
 		return nil, status.Errorf(codes.Internal, "İletişim bilgisi oluşturulamadı: %v", err)
 	}
-
 	if err := tx.Commit(); err != nil {
 		l.Error().Err(err).Msg("Veritabanı transaction commit edilemedi")
 		return nil, status.Error(codes.Internal, "Veritabanı hatası")
 	}
-
 	createdUser, err := s.fetchUserByID(ctx, newUserID)
 	if err != nil {
 		return nil, err
 	}
-
 	l.Info().Str("user_id", newUserID).Msg("Kullanıcı ve iletişim bilgisi başarıyla oluşturuldu")
 	return &userv1.CreateUserResponse{User: createdUser}, nil
 }
@@ -175,7 +161,6 @@ func (s *server) fetchUserByID(ctx context.Context, userID string) (*userv1.User
 	l := getLoggerWithTraceID(ctx, log)
 	query := "SELECT id, name, tenant_id, user_type, preferred_language_code FROM users WHERE id = $1"
 	row := s.db.QueryRowContext(ctx, query, userID)
-
 	var user userv1.User
 	var name, langCode sql.NullString
 	if err := row.Scan(&user.Id, &name, &user.TenantId, &user.UserType, &langCode); err != nil {
@@ -187,20 +172,16 @@ func (s *server) fetchUserByID(ctx context.Context, userID string) (*userv1.User
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
 	}
 	if name.Valid {
-		tempName := name.String
-		user.Name = &tempName
+		user.Name = &name.String
 	}
 	if langCode.Valid {
-		tempLangCode := langCode.String
-		user.PreferredLanguageCode = &tempLangCode
+		user.PreferredLanguageCode = &langCode.String
 	}
-
 	contacts, err := s.fetchContactsForUser(ctx, user.Id)
 	if err != nil {
 		return nil, err
 	}
 	user.Contacts = contacts
-
 	return &user, nil
 }
 
@@ -211,7 +192,6 @@ func (s *server) fetchContactsForUser(ctx context.Context, userID string) ([]*us
 		return nil, status.Errorf(codes.Internal, "İletişim bilgileri sorgulanamadı: %v", err)
 	}
 	defer rows.Close()
-
 	var contacts []*userv1.Contact
 	for rows.Next() {
 		var c userv1.Contact
@@ -223,12 +203,19 @@ func (s *server) fetchContactsForUser(ctx context.Context, userID string) ([]*us
 	return contacts, nil
 }
 
-// ... (connectToDBWithRetry, loadServerTLS, getEnv, getEnvOrFail fonksiyonları aynı kalabilir) ...
 func connectToDBWithRetry(url string, maxRetries int) *sql.DB {
 	var db *sql.DB
 	var err error
+	finalURL := url
+	if !strings.Contains(finalURL, "statement_cache_mode") {
+		separator := "?"
+		if strings.Contains(finalURL, "?") {
+			separator = "&"
+		}
+		finalURL = fmt.Sprintf("%s%sstatement_cache_mode=disable", finalURL, separator)
+	}
 	for i := 0; i < maxRetries; i++ {
-		db, err = sql.Open("pgx", url)
+		db, err = sql.Open("pgx", finalURL)
 		if err == nil {
 			db.SetConnMaxLifetime(time.Minute * 3)
 			db.SetMaxIdleConns(2)
@@ -260,11 +247,7 @@ func loadServerTLS(certPath, keyPath, caPath string) credentials.TransportCreden
 	if !caPool.AppendCertsFromPEM(caCert) {
 		log.Fatal().Msg("CA sertifikası havuza eklenemedi.")
 	}
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{certificate},
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    caPool,
-	}
+	tlsConfig := &tls.Config{Certificates: []tls.Certificate{certificate}, ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: caPool}
 	return credentials.NewTLS(tlsConfig)
 }
 
