@@ -9,7 +9,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"strings"
+
 	"time"
 
 	"github.com/sentiric/sentiric-user-service/internal/logger"
