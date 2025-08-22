@@ -10,7 +10,7 @@ volumes:
 services:
   # --- VERİ KATMANI ---
   postgres:
-    image: postgres:16-alpine
+    build: { context: ../sentiric-postgres }
     env_file: ["${ENV_FILE_PATH}"]
     ports: ["5432:5432"]
     volumes:
@@ -22,7 +22,7 @@ services:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
-      retries: 5  
+      retries: 5
 
   # --- UYGULAMA SERVİSLERİ ---
   user-service:

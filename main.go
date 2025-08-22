@@ -14,6 +14,9 @@ import (
 
 	"github.com/sentiric/sentiric-user-service/internal/logger"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
@@ -206,7 +209,18 @@ func (s *server) fetchContactsForUser(ctx context.Context, userID string) ([]*us
 func connectToDBWithRetry(url string, maxRetries int) *sql.DB {
 	var db *sql.DB
 	var err error
-	finalURL := url
+
+	// 1. URL'yi parse et
+	config, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		log.Fatal().Err(err).Msg("PostgreSQL URL parse edilemedi")
+	}
+
+	// 2. Connection Pooler ile uyumluluk için prepared statement'ları devre dışı bırak
+	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
+	// 3. Yeni, yapılandırılmış URL ile bağlantıyı yeniden dene
+	finalURL := stdlib.RegisterConnConfig(config.ConnConfig)
 
 	for i := 0; i < maxRetries; i++ {
 		db, err = sql.Open("pgx", finalURL)
@@ -215,7 +229,10 @@ func connectToDBWithRetry(url string, maxRetries int) *sql.DB {
 			db.SetMaxIdleConns(2)
 			db.SetMaxOpenConns(5)
 			if pingErr := db.Ping(); pingErr == nil {
-				log.Info().Msg("Veritabanına bağlantı başarılı.")
+				// Düzeltme: log değişkenini doğru kullanmak için.
+				// Bu fonksiyonun içinde tanımlı bir 'log' değişkeni olduğunu varsayıyoruz.
+				// Eğer yoksa, parametre olarak almalı veya global olmalı.
+				log.Info().Msg("Veritabanına bağlantı başarılı (Simple Protocol Mode).")
 				return db
 			} else {
 				err = pingErr
