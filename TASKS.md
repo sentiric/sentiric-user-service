@@ -1,24 +1,14 @@
-# 👤 Sentiric User Service - Geliştirme Yol Haritası (v4.0)
+# 👤 Sentiric User Service - Geliştirme Yol Haritası (v4.1)
 
 Bu belge, `user-service`'in geliştirme görevlerini projenin genel fazlarına uygun olarak listeler.
 
 ---
 
-### **FAZ 0: SÜRDÜRÜLEBİLİR TEMELİN ATILMASI**
+### **FAZ 0 & 1: Temel Kurulum ve Varlık Yönetimi**
 
 -   [x] **Görev ID: USER-001A - Monolitik Yapının Modülerleştirilmesi**
     -   **Durum:** ✅ **Tamamlandı**
-    -   **Açıklama:** `main.go` içerisindeki tüm mantığı; konfigürasyon (`config`), veritabanı bağlantısı (`database`) ve gRPC sunucu yönetimi (`server`) gibi sorumlulukları ayrılmış paketlere böl.
-
----
-
-### **FAZ 1: Temel Varlık Yönetimi**
-
--   [x] **Görev ID: USER-000B - `FindUserByContact` RPC'si**
-    -   **Durum:** ✅ **Tamamlandı**
--   [x] **Görev ID: USER-000C - `CreateUser` RPC'si**
-    -   **Durum:** ✅ **Tamamlandı**
--   [x] **Görev ID: USER-000D - `GetUser` RPC'si**
+-   [x] **Görev ID: USER-000B/C/D - Temel Get/Find/Create RPC'leri**
     -   **Durum:** ✅ **Tamamlandı**
 
 ---
@@ -26,30 +16,45 @@ Bu belge, `user-service`'in geliştirme görevlerini projenin genel fazlarına u
 ### **FAZ 2: Platformun Yönetilebilir Hale Getirilmesi (Mevcut Öncelik)**
 
 **Amaç:** `dashboard-ui` gibi yönetim araçlarının, platformdaki tüm kullanıcıları ve kiracıları tam olarak yönetebilmesini sağlamak.
+**Ön Koşul:** `sentiric-contracts` v1.8.4+ sürümünün yayınlanmış olması.
 
--   [⏳] **Görev ID: USER-002 - `UpdateUser` RPC'si**
-    -   **Açıklama:** Bir kullanıcının adını, tipini veya tercih ettiği dili güncellemek için bir RPC ekle.
-    -   **Durum:** ⏳ **Devam Ediyor**
+-   [ ] **Görev ID: USER-002 - `UpdateUser` RPC'si**
+    -   **Durum:** ⬜ **Bloklandı** (CT-002 bekleniyor)
     -   **Kabul Kriterleri:**
-        -   [ ] `user.proto` dosyasına `UpdateUserRequest` ve `UpdateUserResponse` mesajları eklenmeli.
-        -   [ ] `UpdateUserRequest`, güncellenecek `User` nesnesini ve hangi alanların güncelleneceğini belirten bir `update_mask` (FieldMask) içermeli.
         -   [ ] `server/grpc.go` içine yeni `UpdateUser` RPC metodu implemente edilmeli.
-        -   [ ] Metod, `update_mask`'e göre dinamik bir SQL `UPDATE` sorgusu oluşturmalı ve sadece istenen alanları güncellemeli.
-        -   [ ] Başarı durumunda, güncellenmiş tam `User` nesnesini döndürmeli.
-        -   [ ] Güncellenmek istenen kullanıcı bulunamazsa `NOT_FOUND` hatası vermeli.
+        -   [ ] Metod, `FieldMask`'i kullanarak dinamik bir SQL `UPDATE` sorgusu oluşturmalı ve sadece istenen alanları (`name`, `user_type`, `preferred_language_code`) güncellemeli.
+        -   [ ] Başarı durumunda, güncellenmiş tam `User` nesnesini (`fetchUserByID` ile) döndürmeli.
+        -   [ ] Kullanıcı bulunamazsa `NOT_FOUND` hatası vermeli.
 
 -   [ ] **Görev ID: USER-003 - `DeleteUser` RPC'si**
-    -   **Açıklama:** Bir kullanıcıyı ve ona bağlı tüm varlıkları güvenli bir şekilde silen bir RPC ekle.
+    -   **Durum:** ⬜ **Bloklandı** (CT-002 bekleniyor)
+    -   **Kabul Kriterleri:**
+        -   [ ] `server/grpc.go` içine yeni `DeleteUser` RPC metodu implemente edilmeli.
+        -   [ ] Metod, `user_id`'ye göre bir `DELETE FROM users WHERE id = $1` sorgusu çalıştırmalı.
+        -   [ ] Veritabanındaki `ON DELETE CASCADE` kuralı sayesinde, kullanıcıya ait tüm `contacts` kayıtları otomatik olarak silinmeli.
+        -   [ ] Başarılı silme işleminden sonra `DeleteUserResponse` dönmeli.
+        -   [ ] Kullanıcı bulunamazsa `NOT_FOUND` hatası vermeli.
 
--   [ ] **Görev ID: USER-004 - İletişim Kanalı Yönetimi RPC'leri (`AddContact`, `DeleteContact`)**
-    -   **Açıklama:** Mevcut bir kullanıcıya yeni iletişim kanalları eklemek veya mevcut olanları silmek için RPC'ler oluştur.
+-   [ ] **Görev ID: USER-004A - `AddContact` RPC'si**
+    -   **Durum:** ⬜ **Bloklandı** (CT-002 bekleniyor)
+    -   **Kabul Kriterleri:**
+        -   [ ] `server/grpc.go` içine yeni `AddContact` RPC metodu implemente edilmeli.
+        -   [ ] Metod, belirtilen `user_id`'ye yeni bir `contact` eklemeli.
+        -   [ ] `(contact_type, contact_value)` kombinasyonunun benzersizliğini (unique) ihlal ederse `ALREADY_EXISTS` hatası vermeli.
+        -   [ ] Başarı durumunda, güncellenmiş tam `User` nesnesini döndürmeli.
 
--   [ ] **Görev ID: USER-005 - Listeleme ve Sayfalama RPC'leri (`ListUsers`, `ListTenants`)**
-    -   **Açıklama:** Yönetici panelleri için kullanıcıları ve kiracıları listeleyen, sayfalama (`pagination`) destekli RPC'ler oluştur.
+-   [ ] **Görev ID: USER-004B - `UpdateContact` ve `DeleteContact` RPC'leri**
+    -   **Durum:** ⬜ **Bloklandı** (CT-002 bekleniyor)
+    -   **Kabul Kriterleri:**
+        -   [ ] `UpdateContact` RPC'si, bir `contact` kaydının bilgilerini (`contact_value`, `is_primary`) `FieldMask` kullanarak güncellemeli.
+        -   [ ] `DeleteContact` RPC'si, `contact_id`'ye göre bir `contact` kaydını silmeli.
+        -   [ ] Her iki işlem de başarı durumunda güncellenmiş tam `User` nesnesini döndürmeli.
+
+-   [ ] **Görev ID: USER-005 - Listeleme ve Sayfalama RPC'leri**
+    -   **Durum:** ⬜ **Planlandı** (Bu görev için kontrat değişikliği gerekebilir, şimdilik bekliyor)
 
 ---
 
 ### **FAZ 3: Yetkilendirme ve Gelişmiş Özellikler**
-
 -   [ ] **Görev ID: USER-006 - Rol Yönetimi**
-    -   **Açıklama:** `roles` ve `user_roles` tabloları ekleyerek, kullanıcılara "admin", "agent", "supervisor" gibi roller atama yeteneği ekle.
+    -   **Durum:** ⬜ **Planlandı**
