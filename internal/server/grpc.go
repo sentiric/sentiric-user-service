@@ -238,3 +238,30 @@ func getLoggerWithTraceID(ctx context.Context, baseLogger zerolog.Logger) zerolo
 	}
 	return baseLogger
 }
+
+func (s *server) GetSipCredentials(ctx context.Context, req *userv1.GetSipCredentialsRequest) (*userv1.GetSipCredentialsResponse, error) {
+	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "GetSipCredentials").Str("sip_username", req.GetSipUsername()).Logger()
+	l.Info().Msg("SIP kimlik bilgisi isteği alındı")
+
+	query := `
+        SELECT sc.user_id, u.tenant_id, sc.ha1_hash
+        FROM sip_credentials sc
+        JOIN users u ON sc.user_id = u.id
+        WHERE sc.sip_username = $1
+    `
+	row := s.db.QueryRowContext(ctx, query, req.GetSipUsername())
+
+	var res userv1.GetSipCredentialsResponse
+	err := row.Scan(&res.UserId, &res.TenantId, &res.Ha1Hash)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			l.Warn().Msg("SIP kullanıcısı bulunamadı")
+			return nil, status.Errorf(codes.NotFound, "SIP kullanıcısı bulunamadı: %s", req.GetSipUsername())
+		}
+		l.Error().Err(err).Msg("Veritabanı sorgu hatası")
+		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
+	}
+
+	l.Info().Msg("SIP kimlik bilgileri başarıyla bulundu")
+	return &res, nil
+}
