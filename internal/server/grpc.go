@@ -8,8 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-
-	"strings"
+	"strings" // YENİ IMPORT
 
 	"github.com/rs/zerolog"
 	userv1 "github.com/sentiric/sentiric-contracts/gen/go/sentiric/user/v1"
@@ -51,6 +50,17 @@ func Start(port string, db *sql.DB, certPath, keyPath, caPath string, log zerolo
 	return nil
 }
 
+// YENİ YARDIMCI FONKSİYON
+func normalizePhoneNumber(phone string) string {
+	phone = strings.TrimPrefix(phone, "+")
+	if strings.HasPrefix(phone, "0") {
+		// "0554..." -> "90554..."
+		return "90" + phone[1:]
+	}
+	// Zaten "90..." veya uluslararası formatta ise dokunma
+	return phone
+}
+
 func (s *server) GetUser(ctx context.Context, req *userv1.GetUserRequest) (*userv1.GetUserResponse, error) {
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "GetUser").Str("user_id", req.GetUserId()).Logger()
 	l.Info().Msg("Kullanıcı ID ile istek alındı")
@@ -66,7 +76,7 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "FindUserByContact").Str("contact_value", req.GetContactValue()).Logger()
 	l.Info().Msg("İletişim bilgisi ile kullanıcı arama isteği alındı")
 
-	// --- DEĞİŞİKLİK BURADA: Gelen numarayı normalize et ---
+	// --- DEĞİŞİKLİK: Gelen numarayı normalize et ---
 	normalizedValue := req.GetContactValue()
 	if req.GetContactType() == "phone" {
 		normalizedValue = normalizePhoneNumber(req.GetContactValue())
@@ -111,7 +121,7 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "CreateUser").Str("tenant_id", req.GetTenantId()).Logger()
 	l.Info().Msg("Kullanıcı oluşturma isteği alındı")
 
-	// --- DEĞİŞİKLİK BURADA: Gelen numarayı kaydetmeden önce normalize et ---
+	// --- DEĞİŞİKLİK: Gelen numarayı kaydetmeden önce normalize et ---
 	normalizedValue := req.InitialContact.GetContactValue()
 	if req.InitialContact.GetContactType() == "phone" {
 		normalizedValue = normalizePhoneNumber(req.InitialContact.GetContactValue())
@@ -124,7 +134,6 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 		return nil, status.Error(codes.Internal, "Veritabanı hatası")
 	}
 	defer tx.Rollback()
-
 	userQuery := `INSERT INTO users (name, tenant_id, user_type, preferred_language_code) VALUES ($1, $2, $3, $4) RETURNING id`
 	var newUserID string
 	err = tx.QueryRowContext(ctx, userQuery, req.Name, req.TenantId, req.UserType, req.PreferredLanguageCode).Scan(&newUserID)
@@ -132,10 +141,8 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 		l.Error().Err(err).Msg("Yeni kullanıcı kaydı başarısız")
 		return nil, status.Errorf(codes.Internal, "Kullanıcı oluşturulamadı: %v", err)
 	}
-
 	contactQuery := `INSERT INTO contacts (user_id, contact_type, contact_value, is_primary) VALUES ($1, $2, $3, $4)`
 	_, err = tx.ExecContext(ctx, contactQuery, newUserID, req.InitialContact.GetContactType(), normalizedValue, true) // normalizedValue kullan
-
 	if err != nil {
 		l.Error().Err(err).Msg("Yeni kullanıcının iletişim bilgisi kaydedilemedi")
 		return nil, status.Errorf(codes.Internal, "İletişim bilgisi oluşturulamadı: %v", err)
@@ -144,9 +151,10 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 		l.Error().Err(err).Msg("Veritabanı transaction commit edilemedi")
 		return nil, status.Error(codes.Internal, "Veritabanı hatası")
 	}
+
 	createdUser, err := s.fetchUserByID(ctx, newUserID)
 	if err != nil {
-		return nil, err
+		return nil, err // fetchUserByID already returns a gRPC status error
 	}
 	l.Info().Str("user_id", newUserID).Msg("Kullanıcı ve iletişim bilgisi başarıyla oluşturuldu")
 	return &userv1.CreateUserResponse{User: createdUser}, nil
@@ -229,15 +237,4 @@ func getLoggerWithTraceID(ctx context.Context, baseLogger zerolog.Logger) zerolo
 		return baseLogger.With().Str("trace_id", traceIDValues[0]).Logger()
 	}
 	return baseLogger
-}
-
-// YENİ YARDIMCI FONKSİYON
-func normalizePhoneNumber(phone string) string {
-	phone = strings.TrimPrefix(phone, "+")
-	if strings.HasPrefix(phone, "0") {
-		// "0554..." -> "90554..."
-		return "90" + phone[1:]
-	}
-	// Zaten "90..." veya uluslararası formatta ise dokunma
-	return phone
 }
