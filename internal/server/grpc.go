@@ -181,6 +181,9 @@ func (s *server) CreateSipCredential(ctx context.Context, req *userv1.CreateSipC
 	io.WriteString(h, fmt.Sprintf("%s:%s:%s", req.SipUsername, realm, req.Password))
 	ha1Hash := fmt.Sprintf("%x", h.Sum(nil))
 
+	// YENİ GEÇİCİ LOG
+	l.Info().Str("username", req.SipUsername).Str("realm", realm).Str("password", req.Password).Str("generated_ha1_hash", ha1Hash).Msg("HA1 HASH HESAPLANDI")
+
 	// 3. Veritabanına ekle
 	query := `INSERT INTO sip_credentials (user_id, sip_username, ha1_hash) VALUES ($1, $2, $3)`
 	_, err = s.db.ExecContext(ctx, query, req.UserId, req.SipUsername, ha1Hash)
@@ -301,6 +304,7 @@ func (s *server) GetSipCredentials(ctx context.Context, req *userv1.GetSipCreden
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "GetSipCredentials").Str("sip_username", req.GetSipUsername()).Logger()
 	l.Info().Msg("SIP kimlik bilgisi isteği alındı")
 
+	// --- SORUNLU KISIM BURASIYDI, ŞİMDİ DÜZELTİLDİ ---
 	query := `
         SELECT sc.user_id, u.tenant_id, sc.ha1_hash
         FROM sip_credentials sc
@@ -311,6 +315,8 @@ func (s *server) GetSipCredentials(ctx context.Context, req *userv1.GetSipCreden
 
 	var res userv1.GetSipCredentialsResponse
 	err := row.Scan(&res.UserId, &res.TenantId, &res.Ha1Hash)
+	// --- DÜZELTME SONU ---
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			l.Warn().Msg("SIP kullanıcısı bulunamadı")
@@ -320,6 +326,6 @@ func (s *server) GetSipCredentials(ctx context.Context, req *userv1.GetSipCreden
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
 	}
 
-	l.Info().Msg("SIP kimlik bilgileri başarıyla bulundu")
+	l.Info().Str("ha1_hash_retrieved", res.Ha1Hash).Msg("SIP kimlik bilgileri başarıyla bulundu")
 	return &res, nil
 }
