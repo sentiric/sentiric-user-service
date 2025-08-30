@@ -1,16 +1,17 @@
+// File: sentiric-user-service/internal/server/grpc.go
 package server
 
 import (
 	"context"
-	"crypto/md5" // MD5 için import
+	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
 	"fmt"
-	"io" // io.WriteString için
+	"io"
 	"io/ioutil"
 	"net"
-	"strings" // Zaman aşımı için
+	"strings"
 
 	"github.com/rs/zerolog"
 	userv1 "github.com/sentiric/sentiric-contracts/gen/go/sentiric/user/v1"
@@ -22,14 +23,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// server implements the gRPC UserServiceServer.
 type server struct {
 	userv1.UnimplementedUserServiceServer
 	db  *sql.DB
 	log zerolog.Logger
 }
 
-// Start starts the gRPC server.
 func Start(port string, db *sql.DB, certPath, keyPath, caPath string, log zerolog.Logger) error {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
 	if err != nil {
@@ -300,11 +299,12 @@ func getLoggerWithTraceID(ctx context.Context, baseLogger zerolog.Logger) zerolo
 	return baseLogger
 }
 
+// Sadece değişen ve hata veren fonksiyonun nihai halini ekliyorum:
 func (s *server) GetSipCredentials(ctx context.Context, req *userv1.GetSipCredentialsRequest) (*userv1.GetSipCredentialsResponse, error) {
-	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "GetSipCredentials").Str("sip_username", req.GetSipUsername()).Logger()
+	// Artık bu satır hata vermeyecektir çünkü go.mod v1.8.7'yi kullanıyor.
+	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "GetSipCredentials").Str("sip_username", req.GetSipUsername()).Str("realm", req.GetRealm()).Logger()
 	l.Info().Msg("SIP kimlik bilgisi isteği alındı")
 
-	// --- SORUNLU KISIM BURASIYDI, ŞİMDİ DÜZELTİLDİ ---
 	query := `
         SELECT sc.user_id, u.tenant_id, sc.ha1_hash
         FROM sip_credentials sc
@@ -315,7 +315,6 @@ func (s *server) GetSipCredentials(ctx context.Context, req *userv1.GetSipCreden
 
 	var res userv1.GetSipCredentialsResponse
 	err := row.Scan(&res.UserId, &res.TenantId, &res.Ha1Hash)
-	// --- DÜZELTME SONU ---
 
 	if err != nil {
 		if err == sql.ErrNoRows {
