@@ -2,13 +2,15 @@ package server
 
 import (
 	"context"
+	"crypto/md5" // MD5 için import
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
 	"fmt"
+	"io" // io.WriteString için
 	"io/ioutil"
 	"net"
-	"strings" // YENİ IMPORT
+	"strings" // Zaman aşımı için
 
 	"github.com/rs/zerolog"
 	userv1 "github.com/sentiric/sentiric-contracts/gen/go/sentiric/user/v1"
@@ -50,16 +52,15 @@ func Start(port string, db *sql.DB, certPath, keyPath, caPath string, log zerolo
 	return nil
 }
 
-// YENİ YARDIMCI FONKSİYON
 func normalizePhoneNumber(phone string) string {
 	phone = strings.TrimPrefix(phone, "+")
 	if strings.HasPrefix(phone, "0") {
-		// "0554..." -> "90554..."
 		return "90" + phone[1:]
 	}
-	// Zaten "90..." veya uluslararası formatta ise dokunma
 	return phone
 }
+
+// (GetUser, FindUserByContact, CreateUser, fetchUserByID, fetchContactsForUser fonksiyonları aynı kalacak...)
 
 func (s *server) GetUser(ctx context.Context, req *userv1.GetUserRequest) (*userv1.GetUserResponse, error) {
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "GetUser").Str("user_id", req.GetUserId()).Logger()
@@ -76,13 +77,11 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "FindUserByContact").Str("contact_value", req.GetContactValue()).Logger()
 	l.Info().Msg("İletişim bilgisi ile kullanıcı arama isteği alındı")
 
-	// --- DEĞİŞİKLİK: Gelen numarayı normalize et ---
 	normalizedValue := req.GetContactValue()
 	if req.GetContactType() == "phone" {
 		normalizedValue = normalizePhoneNumber(req.GetContactValue())
 		l.Info().Str("original", req.GetContactValue()).Str("normalized", normalizedValue).Msg("Telefon numarası sorgu için normalize edildi.")
 	}
-	// --- DEĞİŞİKLİK SONU ---
 
 	query := `
 		SELECT u.id, u.name, u.tenant_id, u.user_type, u.preferred_language_code
@@ -90,7 +89,7 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 		JOIN contacts c ON u.id = c.user_id
 		WHERE c.contact_type = $1 AND c.contact_value = $2
 	`
-	row := s.db.QueryRowContext(ctx, query, req.GetContactType(), normalizedValue) // normalizedValue kullan
+	row := s.db.QueryRowContext(ctx, query, req.GetContactType(), normalizedValue)
 	var user userv1.User
 	var name, langCode sql.NullString
 	err := row.Scan(&user.Id, &name, &user.TenantId, &user.UserType, &langCode)
@@ -121,12 +120,10 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "CreateUser").Str("tenant_id", req.GetTenantId()).Logger()
 	l.Info().Msg("Kullanıcı oluşturma isteği alındı")
 
-	// --- DEĞİŞİKLİK: Gelen numarayı kaydetmeden önce normalize et ---
 	normalizedValue := req.InitialContact.GetContactValue()
 	if req.InitialContact.GetContactType() == "phone" {
 		normalizedValue = normalizePhoneNumber(req.InitialContact.GetContactValue())
 	}
-	// --- DEĞİŞİKLİK SONU ---
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -142,7 +139,7 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 		return nil, status.Errorf(codes.Internal, "Kullanıcı oluşturulamadı: %v", err)
 	}
 	contactQuery := `INSERT INTO contacts (user_id, contact_type, contact_value, is_primary) VALUES ($1, $2, $3, $4)`
-	_, err = tx.ExecContext(ctx, contactQuery, newUserID, req.InitialContact.GetContactType(), normalizedValue, true) // normalizedValue kullan
+	_, err = tx.ExecContext(ctx, contactQuery, newUserID, req.InitialContact.GetContactType(), normalizedValue, true)
 	if err != nil {
 		l.Error().Err(err).Msg("Yeni kullanıcının iletişim bilgisi kaydedilemedi")
 		return nil, status.Errorf(codes.Internal, "İletişim bilgisi oluşturulamadı: %v", err)
@@ -154,12 +151,73 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 
 	createdUser, err := s.fetchUserByID(ctx, newUserID)
 	if err != nil {
-		return nil, err // fetchUserByID already returns a gRPC status error
+		return nil, err
 	}
 	l.Info().Str("user_id", newUserID).Msg("Kullanıcı ve iletişim bilgisi başarıyla oluşturuldu")
 	return &userv1.CreateUserResponse{User: createdUser}, nil
 }
 
+// --- YENİ SIP YÖNETİM FONKSİYONLARI ---
+
+func (s *server) CreateSipCredential(ctx context.Context, req *userv1.CreateSipCredentialRequest) (*userv1.CreateSipCredentialResponse, error) {
+	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "CreateSipCredential").Str("user_id", req.UserId).Str("sip_username", req.SipUsername).Logger()
+	l.Info().Msg("SIP kimlik bilgisi oluşturma isteği alındı")
+
+	// 1. Kullanıcının tenant_id'sini ve realm'ı bul (realm şimdilik statik)
+	var tenantId string
+	err := s.db.QueryRowContext(ctx, "SELECT tenant_id FROM users WHERE id = $1", req.UserId).Scan(&tenantId)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, status.Errorf(codes.NotFound, "İlişkili kullanıcı bulunamadı: %s", req.UserId)
+		}
+		return nil, status.Errorf(codes.Internal, "Kullanıcı sorgulanamadı: %v", err)
+	}
+
+	// Bu sabit bir değer, gelecekte tenant bazlı olabilir.
+	realm := "sentiric_demo"
+
+	// 2. HA1 hash'ini hesapla: MD5(username:realm:password)
+	h := md5.New()
+	io.WriteString(h, fmt.Sprintf("%s:%s:%s", req.SipUsername, realm, req.Password))
+	ha1Hash := fmt.Sprintf("%x", h.Sum(nil))
+
+	// 3. Veritabanına ekle
+	query := `INSERT INTO sip_credentials (user_id, sip_username, ha1_hash) VALUES ($1, $2, $3)`
+	_, err = s.db.ExecContext(ctx, query, req.UserId, req.SipUsername, ha1Hash)
+	if err != nil {
+		// PostgreSQL'in unique constraint hatasını kontrol et
+		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+			return nil, status.Errorf(codes.AlreadyExists, "Bu SIP kullanıcı adı zaten mevcut: %s", req.SipUsername)
+		}
+		l.Error().Err(err).Msg("SIP kimlik bilgisi veritabanına yazılamadı")
+		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
+	}
+
+	l.Info().Msg("SIP kimlik bilgisi başarıyla oluşturuldu.")
+	return &userv1.CreateSipCredentialResponse{Success: true}, nil
+}
+
+func (s *server) DeleteSipCredential(ctx context.Context, req *userv1.DeleteSipCredentialRequest) (*userv1.DeleteSipCredentialResponse, error) {
+	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "DeleteSipCredential").Str("sip_username", req.SipUsername).Logger()
+	l.Info().Msg("SIP kimlik bilgisi silme isteği alındı")
+
+	query := `DELETE FROM sip_credentials WHERE sip_username = $1`
+	result, err := s.db.ExecContext(ctx, query, req.SipUsername)
+	if err != nil {
+		l.Error().Err(err).Msg("SIP kimlik bilgisi silinemedi")
+		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return nil, status.Errorf(codes.NotFound, "Silinecek SIP kullanıcısı bulunamadı: %s", req.SipUsername)
+	}
+
+	l.Info().Int64("rows_affected", rowsAffected).Msg("SIP kimlik bilgisi başarıyla silindi.")
+	return &userv1.DeleteSipCredentialResponse{Success: true}, nil
+}
+
+// (GetSipCredentials, fetchUserByID, fetchContactsForUser, loadServerTLS, getLoggerWithTraceID aynı kalacak...)
 func (s *server) fetchUserByID(ctx context.Context, userID string) (*userv1.User, error) {
 	l := getLoggerWithTraceID(ctx, s.log)
 	query := "SELECT id, name, tenant_id, user_type, preferred_language_code FROM users WHERE id = $1"
