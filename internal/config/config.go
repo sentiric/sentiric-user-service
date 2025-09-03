@@ -32,6 +32,7 @@ func Load() (*Config, error) {
 }
 
 // GetEnv retrieves an environment variable or returns a fallback.
+// Public hale getirildi.
 func GetEnv(key, fallback string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
