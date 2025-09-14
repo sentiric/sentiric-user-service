@@ -23,7 +23,7 @@ func Load() (*Config, error) {
 
 	return &Config{
 		DatabaseURL:  GetEnvOrFail("POSTGRES_URL"),
-		GRPCPort:     GetEnv("USER_SERVICE_GRPC_PORT", "50053"),
+		GRPCPort:     GetEnv("USER_SERVICE_GRPC_PORT", "12011"),
 		CertPath:     GetEnvOrFail("USER_SERVICE_CERT_PATH"),
 		KeyPath:      GetEnvOrFail("USER_SERVICE_KEY_PATH"),
 		CaPath:       GetEnvOrFail("GRPC_TLS_CA_PATH"),
