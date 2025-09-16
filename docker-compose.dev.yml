@@ -32,12 +32,11 @@ services:
       sentiric-net:
         ipv4_address: ${USER_SERVICE_IPV4_ADDRESS}       
     restart: always
-    depends_on: { 
-      postgres: { condition: service_healthy }
-    }
-    # healthcheck:
-    #   test: ["CMD", "nc", "-z", "localhost", "12011"]
-    #   interval: 10s
-    #   timeout: 5s
-    #   retries: 5
-    #   start_period: 10s  
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "12011"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s    
+    # depends_on: 
+    #   postgres: { condition: service_healthy } 
