@@ -4,14 +4,7 @@ Bu belge, `user-service`'in geliştirme görevlerini projenin genel fazlarına u
 
 ---
 
-### **FAZ 0 & 1: Temel Kurulum ve Varlık Yönetimi**
 
--   [x] **Görev ID: USER-001A - Monolitik Yapının Modülerleştirilmesi**
-    -   **Durum:** ✅ **Tamamlandı**
--   [x] **Görev ID: USER-000B/C/D - Temel Get/Find/Create RPC'leri**
-    -   **Durum:** ✅ **Tamamlandı**
-
----
 
 ### **FAZ 2: Platformun Yönetilebilir Hale Getirilmesi (Mevcut Öncelik)**
 
