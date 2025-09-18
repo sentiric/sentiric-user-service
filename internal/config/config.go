@@ -7,7 +7,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Config struct holds all configuration for the application.
 type Config struct {
 	DatabaseURL  string
 	GRPCPort     string
@@ -17,7 +16,6 @@ type Config struct {
 	MaxDBRetries int
 }
 
-// Load loads configuration from environment variables.
 func Load() (*Config, error) {
 	godotenv.Load()
 
@@ -31,8 +29,6 @@ func Load() (*Config, error) {
 	}, nil
 }
 
-// GetEnv retrieves an environment variable or returns a fallback.
-// Public hale getirildi.
 func GetEnv(key, fallback string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
@@ -40,11 +36,15 @@ func GetEnv(key, fallback string) string {
 	return fallback
 }
 
-// GetEnvOrFail retrieves an environment variable or fails fatally.
 func GetEnvOrFail(key string) string {
 	value, exists := os.LookupEnv(key)
 	if !exists {
 		log.Fatal().Str("variable", key).Msg("Gerekli ortam değişkeni tanımlı değil")
 	}
 	return value
+}
+
+// YENİ FONKSİYON: Diğer modüllerin de env'e erişebilmesi için.
+func (c *Config) GetEnv(key, fallback string) string {
+	return GetEnv(key, fallback)
 }

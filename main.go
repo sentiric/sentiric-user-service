@@ -7,7 +7,6 @@ import (
 	"github.com/sentiric/sentiric-user-service/internal/server"
 )
 
-// YENİ: ldflags ile doldurulacak değişkenler
 var (
 	ServiceVersion string
 	GitCommit      string
@@ -17,24 +16,24 @@ var (
 const serviceName = "user-service"
 
 func main() {
-	log := logger.New(serviceName)
-
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatal().Err(err).Msg("Konfigürasyon yüklenemedi")
+		// config.Load zaten loglama yapıyor.
+		return
 	}
 
-	// YENİ: Başlangıçta versiyon bilgisini logla
+	// Bu çağrı artık doğru imzayla eşleşiyor: New(serviceName, env)
+	log := logger.New(serviceName, cfg.GetEnv("ENV", "production"))
+
 	log.Info().
 		Str("version", ServiceVersion).
 		Str("commit", GitCommit).
 		Str("build_date", BuildDate).
-		Str("profile", config.GetEnv("ENV", "production")).
+		Str("profile", cfg.GetEnv("ENV", "production")).
 		Msg("🚀 Sentiric User Service başlatılıyor...")
 
 	db, err := database.Connect(cfg.DatabaseURL, cfg.MaxDBRetries, log)
 	if err != nil {
-		// Connect function already logs fatally, but we exit just in case.
 		return
 	}
 	defer db.Close()
