@@ -22,14 +22,19 @@ RUN go mod verify
 COPY . .
 
 # ldflags ile build-time değişkenlerini Go binary'sine göm
+# --- DEĞİŞİKLİK BURADA ---
+# Derleme komutunun sonundaki '.' yerine, ana paketin yolunu belirtiyoruz.
+# `user-service`'in ana dosyası kök dizinde olduğu için `./` veya `.` çalışmalı,
+# ama en doğrusu, gelecekteki `cmd` yapısına hazırlık olarak açıkça belirtmektir.
+# Şimdilik en basit ve doğru düzeltme `./` olacaktır.
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE} -X main.ServiceVersion=${SERVICE_VERSION} -w -s" \
-    -o /app/bin/sentiric-user-service .
+    -o /app/bin/sentiric-user-service ./
 
 # --- ÇALIŞTIRMA AŞAMASI (DEBIAN SLIM) ---
-# DEĞİŞİKLİK: Alpine yerine Debian Slim kullanarak daha geniş sertifika ve kütüphane desteği sağlıyoruz.
 FROM debian:bookworm-slim
 
+# ... (Geri kalan kısım aynı) ...
 # --- Çalışma zamanı sistem bağımlılıkları ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-openbsd \
@@ -38,7 +43,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* 
 
 # GÜVENLİK: Root olmayan bir kullanıcı oluştur
-# DÜZELTME: Debian tabanlı sistemler için doğru komutlar kullanıldı.
 RUN addgroup --system --gid 1001 appgroup && \
     adduser --system --no-create-home --uid 1001 --ingroup appgroup appuser
 
