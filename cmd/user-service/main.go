@@ -57,7 +57,8 @@ func main() {
 	stopChan := make(chan os.Signal, 1)
 	signal.Notify(stopChan, syscall.SIGINT, syscall.SIGTERM)
 
-	grpcServer := server.NewGrpcServer(db, cfg.CertPath, cfg.KeyPath, cfg.CaPath, log)
+	// DEĞİŞİKLİK BURADA: cfg'yi NewGrpcServer'a gönderin
+	grpcServer := server.NewGrpcServer(db, cfg.CertPath, cfg.KeyPath, cfg.CaPath, log, cfg)
 	go func() {
 		log.Info().Str("port", cfg.GRPCPort).Msg("gRPC sunucusu dinleniyor...")
 		if err := server.Start(grpcServer, cfg.GRPCPort); err != nil {
@@ -65,7 +66,6 @@ func main() {
 			stopChan <- syscall.SIGTERM // Başlatma hatası durumunda ana goroutine'i sonlandır
 		}
 	}()
-
 	<-stopChan // Kapatma sinyali bekleniyor
 	
 	log.Warn().Msg("Kapatma sinyali alındı, servis durduruluyor...")

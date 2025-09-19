@@ -11,10 +11,11 @@ import (
 type Config struct {
 	DatabaseURL  string
 	GRPCPort     string
-	HttpPort     string // YENİ ALAN
+	HttpPort     string
 	CertPath     string
 	KeyPath      string
 	CaPath       string
+	SipRealm     string // YENİ ALAN
 	MaxDBRetries int
 }
 
@@ -24,10 +25,11 @@ func Load() (*Config, error) {
 	return &Config{
 		DatabaseURL:  GetEnvOrFail("POSTGRES_URL"),
 		GRPCPort:     GetEnv("USER_SERVICE_GRPC_PORT", "12011"),
-		HttpPort:     GetEnv("USER_SERVICE_HTTP_PORT", "12010"), // YENİ ALAN
+		HttpPort:     GetEnv("USER_SERVICE_HTTP_PORT", "12010"),
 		CertPath:     GetEnvOrFail("USER_SERVICE_CERT_PATH"),
 		KeyPath:      GetEnvOrFail("USER_SERVICE_KEY_PATH"),
 		CaPath:       GetEnvOrFail("GRPC_TLS_CA_PATH"),
+		SipRealm:     GetEnvOrFail("SIP_SIGNALING_REALM"), // YENİ ALAN
 		MaxDBRetries: 10,
 	}, nil
 }
