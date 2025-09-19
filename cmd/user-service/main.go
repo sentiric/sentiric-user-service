@@ -2,20 +2,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
-	// --- YENİ IMPORT BLOKU BAŞLANGICI ---
+	"github.com/rs/zerolog"
 	"github.com/sentiric/sentiric-user-service/internal/config"
 	"github.com/sentiric/sentiric-user-service/internal/database"
 	"github.com/sentiric/sentiric-user-service/internal/logger"
 	"github.com/sentiric/sentiric-user-service/internal/server"
-	"github.com/rs/zerolog" // Bu satır doğrudan zerolog'u import etmese de,
-	                        // logger paketini import ettiğimiz için gereklidir.
-	// --- YENİ IMPORT BLOKU SONU ---
 )
 
 var (
@@ -29,7 +28,6 @@ const serviceName = "user-service"
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
-		// Loglama henüz hazır olmadığı için standart log kullanıyoruz.
 		fmt.Fprintf(os.Stderr, "Kritik Hata: Konfigürasyon yüklenemedi: %v\n", err)
 		os.Exit(1)
 	}
@@ -45,35 +43,48 @@ func main() {
 
 	db, err := database.Connect(cfg.DatabaseURL, cfg.MaxDBRetries, log)
 	if err != nil {
-		// Connect fonksiyonu zaten loglama yapıyor ve gerekirse programı sonlandırıyor.
-		// Bu yüzden burada ek bir loga gerek yok, sadece çıkış yapabiliriz.
 		os.Exit(1)
 	}
 	defer db.Close()
-	
-	go startHttpServer(cfg.HttpPort, log)
 
-	// Graceful shutdown için sinyal dinleyicisi
-	stopChan := make(chan os.Signal, 1)
-	signal.Notify(stopChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// DEĞİŞİKLİK BURADA: cfg'yi NewGrpcServer'a gönderin
+	// HTTP ve gRPC sunucularını oluştur
 	grpcServer := server.NewGrpcServer(db, cfg.CertPath, cfg.KeyPath, cfg.CaPath, log, cfg)
+	httpServer := startHttpServer(cfg.HttpPort, log)
+
+	// gRPC sunucusunu bir goroutine'de başlat
 	go func() {
 		log.Info().Str("port", cfg.GRPCPort).Msg("gRPC sunucusu dinleniyor...")
-		if err := server.Start(grpcServer, cfg.GRPCPort); err != nil {
+		if err := server.Start(grpcServer, cfg.GRPCPort); err != nil && err.Error() != "http: Server closed" {
 			log.Error().Err(err).Msg("gRPC sunucusu başlatılamadı")
-			stopChan <- syscall.SIGTERM // Başlatma hatası durumunda ana goroutine'i sonlandır
 		}
 	}()
-	<-stopChan // Kapatma sinyali bekleniyor
-	
-	log.Warn().Msg("Kapatma sinyali alındı, servis durduruluyor...")
+
+	// Graceful shutdown için sinyal dinleyicisi
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Warn().Msg("Kapatma sinyali alındı, servisler durduruluyor...")
+
+	// Sunucuları zarifçe kapatmak için bir context oluştur
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// gRPC sunucusunu durdur
 	server.Stop(grpcServer)
+	log.Info().Msg("gRPC sunucusu durduruldu.")
+
+	// HTTP sunucusunu durdur
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Error().Err(err).Msg("HTTP sunucusu düzgün kapatılamadı.")
+	} else {
+		log.Info().Msg("HTTP sunucusu durduruldu.")
+	}
+
 	log.Info().Msg("Servis başarıyla durduruldu.")
 }
 
-func startHttpServer(port string, log zerolog.Logger) {
+func startHttpServer(port string, log zerolog.Logger) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -82,8 +93,13 @@ func startHttpServer(port string, log zerolog.Logger) {
 	})
 
 	addr := fmt.Sprintf(":%s", port)
-	log.Info().Str("port", port).Msg("HTTP sunucusu (health) dinleniyor")
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Error().Err(err).Msg("HTTP sunucusu başlatılamadı")
-	}
+	srv := &http.Server{Addr: addr, Handler: mux}
+
+	go func() {
+		log.Info().Str("port", port).Msg("HTTP sunucusu (health) dinleniyor")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal().Err(err).Msg("HTTP sunucusu başlatılamadı")
+		}
+	}()
+	return srv
 }

@@ -1,4 +1,3 @@
-// sentiric-user-service/internal/server/grpc.go
 package server
 
 import (
@@ -15,6 +14,7 @@ import (
 
 	"github.com/rs/zerolog"
 	userv1 "github.com/sentiric/sentiric-contracts/gen/go/sentiric/user/v1"
+	"github.com/sentiric/sentiric-user-service/internal/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -23,15 +23,15 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// server struct'ını config'i tutacak şekilde güncelleyin
+// server struct'ı, gRPC servisinin implementasyonunu tutar.
 type server struct {
 	userv1.UnimplementedUserServiceServer
 	db     *sql.DB
 	log    zerolog.Logger
-	config *config.Config // YENİ ALAN
+	config *config.Config
 }
 
-// NewGrpcServer'ı config'i alacak şekilde güncelleyin
+// NewGrpcServer, TLS kimlik bilgilerini yükleyerek ve servisleri kaydederek yeni bir gRPC sunucu örneği oluşturur.
 func NewGrpcServer(db *sql.DB, certPath, keyPath, caPath string, log zerolog.Logger, cfg *config.Config) *grpc.Server {
 	creds, err := loadServerTLS(certPath, keyPath, caPath, log)
 	if err != nil {
@@ -39,7 +39,6 @@ func NewGrpcServer(db *sql.DB, certPath, keyPath, caPath string, log zerolog.Log
 	}
 
 	grpcServer := grpc.NewServer(grpc.Creds(creds))
-	// server struct'ını config ile başlatın
 	userv1.RegisterUserServiceServer(grpcServer, &server{db: db, log: log, config: cfg})
 	reflection.Register(grpcServer)
 	return grpcServer
@@ -201,11 +200,8 @@ func (s *server) CreateSipCredential(ctx context.Context, req *userv1.CreateSipC
 		}
 		return nil, status.Errorf(codes.Internal, "Kullanıcı sorgulanamadı: %v", err)
 	}
-	
-	// --- DEĞİŞİKLİK BURADA ---
-	// realm := "sentiric_demo" // Bu satırı silin
-	realm := s.config.SipRealm // Yeni, konfigürasyondan gelen değeri kullanın
-	
+
+	realm := s.config.SipRealm
 	h := md5.New()
 	io.WriteString(h, fmt.Sprintf("%s:%s:%s", req.SipUsername, realm, req.Password))
 	ha1Hash := fmt.Sprintf("%x", h.Sum(nil))

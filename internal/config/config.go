@@ -3,6 +3,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog/log"
@@ -15,12 +16,18 @@ type Config struct {
 	CertPath     string
 	KeyPath      string
 	CaPath       string
-	SipRealm     string // YENİ ALAN
+	SipRealm     string
 	MaxDBRetries int
 }
 
 func Load() (*Config, error) {
 	godotenv.Load()
+
+	maxRetries, err := strconv.Atoi(GetEnv("MAX_DB_RETRIES", "10"))
+	if err != nil {
+		log.Warn().Str("value", GetEnv("MAX_DB_RETRIES", "10")).Msg("Geçersiz MAX_DB_RETRIES değeri, varsayılan (10) kullanılıyor.")
+		maxRetries = 10
+	}
 
 	return &Config{
 		DatabaseURL:  GetEnvOrFail("POSTGRES_URL"),
@@ -29,8 +36,8 @@ func Load() (*Config, error) {
 		CertPath:     GetEnvOrFail("USER_SERVICE_CERT_PATH"),
 		KeyPath:      GetEnvOrFail("USER_SERVICE_KEY_PATH"),
 		CaPath:       GetEnvOrFail("GRPC_TLS_CA_PATH"),
-		SipRealm:     GetEnvOrFail("SIP_SIGNALING_REALM"), // YENİ ALAN
-		MaxDBRetries: 10,
+		SipRealm:     GetEnvOrFail("SIP_SIGNALING_REALM"),
+		MaxDBRetries: maxRetries,
 	}, nil
 }
 
@@ -49,7 +56,6 @@ func GetEnvOrFail(key string) string {
 	return value
 }
 
-// YENİ FONKSİYON: Diğer modüllerin de env'e erişebilmesi için.
 func (c *Config) GetEnv(key, fallback string) string {
 	return GetEnv(key, fallback)
 }
