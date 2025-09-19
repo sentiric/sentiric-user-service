@@ -1,3 +1,5 @@
+
+// sentiric-user-service/internal/server/grpc.go
 package server
 
 import (
@@ -22,33 +24,45 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// server struct'ı, gRPC servisinin implementasyonunu tutar.
 type server struct {
 	userv1.UnimplementedUserServiceServer
 	db  *sql.DB
 	log zerolog.Logger
 }
 
-func Start(port string, db *sql.DB, certPath, keyPath, caPath string, log zerolog.Logger) error {
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
-	if err != nil {
-		return fmt.Errorf("gRPC portu dinlenemedi: %w", err)
-	}
-
+// NewGrpcServer, TLS kimlik bilgilerini yükleyerek ve servisleri kaydederek yeni bir gRPC sunucu örneği oluşturur.
+func NewGrpcServer(db *sql.DB, certPath, keyPath, caPath string, log zerolog.Logger) *grpc.Server {
 	creds, err := loadServerTLS(certPath, keyPath, caPath, log)
 	if err != nil {
-		return err
+		log.Fatal().Err(err).Msg("TLS kimlik bilgileri yüklenemedi")
 	}
 
 	grpcServer := grpc.NewServer(grpc.Creds(creds))
 	userv1.RegisterUserServiceServer(grpcServer, &server{db: db, log: log})
 	reflection.Register(grpcServer)
+	return grpcServer
+}
 
-	log.Info().Str("port", port).Msg("gRPC sunucusu dinleniyor...")
+// Start, verilen gRPC sunucusunu belirtilen portta dinlemeye başlar.
+// Bu fonksiyon bloke edicidir ve bir hata döndürürse program sonlanmalıdır.
+func Start(grpcServer *grpc.Server, port string) error {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+	if err != nil {
+		return fmt.Errorf("gRPC portu dinlenemedi: %w", err)
+	}
 	if err := grpcServer.Serve(listener); err != nil {
 		return fmt.Errorf("gRPC sunucusu başlatılamadı: %w", err)
 	}
 	return nil
 }
+
+// Stop, gRPC sunucusunu zarif bir şekilde (gracefully) durdurur.
+func Stop(grpcServer *grpc.Server) {
+	grpcServer.GracefulStop()
+}
+
+// --- gRPC Metot Implementasyonları ---
 
 func (s *server) GetUser(ctx context.Context, req *userv1.GetUserRequest) (*userv1.GetUserResponse, error) {
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "GetUser").Str("user_id", req.GetUserId()).Logger()
@@ -107,16 +121,6 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 	return &userv1.FindUserByContactResponse{User: &user}, nil
 }
 
-// (Diğer CRUD fonksiyonları, SIP fonksiyonları ve yardımcı fonksiyonlar için de benzer şekilde log seviyeleri ayarlanmıştır.)
-// ... (Tüm fonksiyonlar aşağıda tam olarak verilmiştir) ...
-func normalizePhoneNumber(phone string) string {
-	phone = strings.TrimPrefix(phone, "+")
-	if strings.HasPrefix(phone, "0") {
-		return "90" + phone[1:]
-	}
-	return phone
-}
-
 func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) (*userv1.CreateUserResponse, error) {
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "CreateUser").Str("tenant_id", req.GetTenantId()).Logger()
 	l.Info().Msg("Kullanıcı oluşturma isteği alındı")
@@ -162,6 +166,28 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 	return &userv1.CreateUserResponse{User: createdUser}, nil
 }
 
+func (s *server) GetSipCredentials(ctx context.Context, req *userv1.GetSipCredentialsRequest) (*userv1.GetSipCredentialsResponse, error) {
+	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "GetSipCredentials").Str("sip_username", req.GetSipUsername()).Str("realm", req.GetRealm()).Logger()
+	l.Info().Msg("SIP kimlik bilgisi isteği alındı")
+
+	query := `SELECT sc.user_id, u.tenant_id, sc.ha1_hash FROM sip_credentials sc JOIN users u ON sc.user_id = u.id WHERE sc.sip_username = $1`
+	row := s.db.QueryRowContext(ctx, query, req.GetSipUsername())
+
+	var res userv1.GetSipCredentialsResponse
+	err := row.Scan(&res.UserId, &res.TenantId, &res.Ha1Hash)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			l.Warn().Msg("SIP kullanıcısı bulunamadı")
+			return nil, status.Errorf(codes.NotFound, "SIP kullanıcısı bulunamadı: %s", req.GetSipUsername())
+		}
+		l.Error().Err(err).Msg("Veritabanı sorgu hatası")
+		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
+	}
+
+	l.Debug().Str("ha1_hash_retrieved", res.Ha1Hash).Msg("SIP kimlik bilgileri başarıyla bulundu")
+	return &res, nil
+}
+
 func (s *server) CreateSipCredential(ctx context.Context, req *userv1.CreateSipCredentialRequest) (*userv1.CreateSipCredentialResponse, error) {
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "CreateSipCredential").Str("user_id", req.UserId).Str("sip_username", req.SipUsername).Logger()
 	l.Info().Msg("SIP kimlik bilgisi oluşturma isteği alındı")
@@ -175,7 +201,7 @@ func (s *server) CreateSipCredential(ctx context.Context, req *userv1.CreateSipC
 		return nil, status.Errorf(codes.Internal, "Kullanıcı sorgulanamadı: %v", err)
 	}
 
-	realm := "sentiric_demo"
+	realm := "sentiric_demo" // Bu değer konfigürasyondan gelmeli
 	h := md5.New()
 	io.WriteString(h, fmt.Sprintf("%s:%s:%s", req.SipUsername, realm, req.Password))
 	ha1Hash := fmt.Sprintf("%x", h.Sum(nil))
@@ -216,27 +242,7 @@ func (s *server) DeleteSipCredential(ctx context.Context, req *userv1.DeleteSipC
 	return &userv1.DeleteSipCredentialResponse{Success: true}, nil
 }
 
-func (s *server) GetSipCredentials(ctx context.Context, req *userv1.GetSipCredentialsRequest) (*userv1.GetSipCredentialsResponse, error) {
-	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "GetSipCredentials").Str("sip_username", req.GetSipUsername()).Str("realm", req.GetRealm()).Logger()
-	l.Info().Msg("SIP kimlik bilgisi isteği alındı")
-
-	query := `SELECT sc.user_id, u.tenant_id, sc.ha1_hash FROM sip_credentials sc JOIN users u ON sc.user_id = u.id WHERE sc.sip_username = $1`
-	row := s.db.QueryRowContext(ctx, query, req.GetSipUsername())
-
-	var res userv1.GetSipCredentialsResponse
-	err := row.Scan(&res.UserId, &res.TenantId, &res.Ha1Hash)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			l.Warn().Msg("SIP kullanıcısı bulunamadı")
-			return nil, status.Errorf(codes.NotFound, "SIP kullanıcısı bulunamadı: %s", req.GetSipUsername())
-		}
-		l.Error().Err(err).Msg("Veritabanı sorgu hatası")
-		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
-	}
-
-	l.Debug().Str("ha1_hash_retrieved", res.Ha1Hash).Msg("SIP kimlik bilgileri başarıyla bulundu")
-	return &res, nil
-}
+// --- Yardımcı Fonksiyonlar ---
 
 func (s *server) fetchUserByID(ctx context.Context, userID string) (*userv1.User, error) {
 	l := getLoggerWithTraceID(ctx, s.log)
@@ -315,4 +321,12 @@ func getLoggerWithTraceID(ctx context.Context, baseLogger zerolog.Logger) zerolo
 		return baseLogger.With().Str("trace_id", traceIDValues[0]).Logger()
 	}
 	return baseLogger
+}
+
+func normalizePhoneNumber(phone string) string {
+	phone = strings.TrimPrefix(phone, "+")
+	if strings.HasPrefix(phone, "0") {
+		return "90" + phone[1:]
+	}
+	return phone
 }
