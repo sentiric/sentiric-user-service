@@ -23,13 +23,10 @@ COPY . .
 
 # ldflags ile build-time değişkenlerini Go binary'sine göm
 # --- DEĞİŞİKLİK BURADA ---
-# Derleme komutunun sonundaki '.' yerine, ana paketin yolunu belirtiyoruz.
-# `user-service`'in ana dosyası kök dizinde olduğu için `./` veya `.` çalışmalı,
-# ama en doğrusu, gelecekteki `cmd` yapısına hazırlık olarak açıkça belirtmektir.
-# Şimdilik en basit ve doğru düzeltme `./` olacaktır.
+# Derleme komutunun hedefi olarak artık yeni ve doğru yolu gösteriyoruz.
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE} -X main.ServiceVersion=${SERVICE_VERSION} -w -s" \
-    -o /app/bin/sentiric-user-service ./
+    -o /app/bin/sentiric-user-service ./cmd/user-service
 
 # --- ÇALIŞTIRMA AŞAMASI (DEBIAN SLIM) ---
 FROM debian:bookworm-slim

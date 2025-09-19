@@ -1,4 +1,4 @@
-// sentiric-user-service/main.go
+// sentiric-user-service/cmd/user-service/main.go
 package main
 
 import (
