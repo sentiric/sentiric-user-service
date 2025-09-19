@@ -1,6 +1,9 @@
+// sentiric-user-service/main.go
 package main
 
 import (
+	"fmt"
+	"net/http" // YENİ
 	"github.com/sentiric/sentiric-user-service/internal/config"
 	"github.com/sentiric/sentiric-user-service/internal/database"
 	"github.com/sentiric/sentiric-user-service/internal/logger"
@@ -18,13 +21,10 @@ const serviceName = "user-service"
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
-		// config.Load zaten loglama yapıyor.
 		return
 	}
 
-	// Bu çağrı artık doğru imzayla eşleşiyor: New(serviceName, env)
 	log := logger.New(serviceName, cfg.GetEnv("ENV", "production"))
-
 	log.Info().
 		Str("version", ServiceVersion).
 		Str("commit", GitCommit).
@@ -37,8 +37,26 @@ func main() {
 		return
 	}
 	defer db.Close()
+	
+	// YENİ: HTTP Sunucusunu başlat
+	go startHttpServer(cfg.HttpPort, log)
 
 	if err := server.Start(cfg.GRPCPort, db, cfg.CertPath, cfg.KeyPath, cfg.CaPath, log); err != nil {
 		log.Fatal().Err(err).Msg("Sunucu başlatılamadı")
+	}
+}
+
+// YENİ: HTTP sunucusunu başlatan fonksiyon
+func startHttpServer(port string, log zerolog.Logger) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"status": "ok"}`)
+	})
+
+	addr := fmt.Sprintf(":%s", port)
+	log.Info().Str("port", port).Msg("HTTP sunucusu (health) dinleniyor")
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Error().Err(err).Msg("HTTP sunucusu başlatılamadı")
 	}
 }

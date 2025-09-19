@@ -1,3 +1,4 @@
+// sentiric-user-service/internal/config/config.go
 package config
 
 import (
@@ -10,6 +11,7 @@ import (
 type Config struct {
 	DatabaseURL  string
 	GRPCPort     string
+	HttpPort     string // YENİ ALAN
 	CertPath     string
 	KeyPath      string
 	CaPath       string
@@ -22,6 +24,7 @@ func Load() (*Config, error) {
 	return &Config{
 		DatabaseURL:  GetEnvOrFail("POSTGRES_URL"),
 		GRPCPort:     GetEnv("USER_SERVICE_GRPC_PORT", "12011"),
+		HttpPort:     GetEnv("USER_SERVICE_HTTP_PORT", "12010"), // YENİ ALAN
 		CertPath:     GetEnvOrFail("USER_SERVICE_CERT_PATH"),
 		KeyPath:      GetEnvOrFail("USER_SERVICE_KEY_PATH"),
 		CaPath:       GetEnvOrFail("GRPC_TLS_CA_PATH"),
