@@ -32,13 +32,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := logger.New(serviceName, cfg.GetEnv("ENV", "production"))
+	// DEĞİŞİKLİK: Logger'a ENV ve LOG_LEVEL'i config'den iletiyoruz.
+	log := logger.New(serviceName, cfg.Env, cfg.LogLevel)
 
 	log.Info().
 		Str("version", ServiceVersion).
 		Str("commit", GitCommit).
 		Str("build_date", BuildDate).
-		Str("profile", cfg.GetEnv("ENV", "production")).
+		Str("profile", cfg.Env).
 		Msg("🚀 Sentiric User Service başlatılıyor...")
 
 	db, err := database.Connect(cfg.DatabaseURL, cfg.MaxDBRetries, log)

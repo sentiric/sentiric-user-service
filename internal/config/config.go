@@ -18,6 +18,9 @@ type Config struct {
 	CaPath       string
 	SipRealm     string
 	MaxDBRetries int
+	// YENİ ALAN: Log seviyesini de config'den okuyacağız.
+	LogLevel     string
+	Env          string
 }
 
 func Load() (*Config, error) {
@@ -38,6 +41,9 @@ func Load() (*Config, error) {
 		CaPath:       GetEnvOrFail("GRPC_TLS_CA_PATH"),
 		SipRealm:     GetEnvOrFail("SIP_SIGNALING_REALM"),
 		MaxDBRetries: maxRetries,
+		// YENİ ALANLARI DOLDURUYORUZ
+		LogLevel:     GetEnv("LOG_LEVEL", "info"),
+		Env:          GetEnv("ENV", "production"),
 	}, nil
 }
 
@@ -56,6 +62,7 @@ func GetEnvOrFail(key string) string {
 	return value
 }
 
-func (c *Config) GetEnv(key, fallback string) string {
-	return GetEnv(key, fallback)
-}
+// GetEnv metodunu Config struct'ından kaldırıyoruz çünkü artık doğrudan kullanılıyor.
+// func (c *Config) GetEnv(key, fallback string) string {
+// 	return GetEnv(key, fallback)
+// }
