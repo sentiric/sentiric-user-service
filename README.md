@@ -36,9 +36,9 @@ Bu servis, diğer iç (backend) servislere gRPC üzerinden hizmet verir.
 
 ## 🚀 Yerel Geliştirme
 
-1.  **Bağımlılıkları Yükleyin:** `go mod tidy`
-2.  **Ortam Değişkenlerini Ayarlayın:** `.env.docker` dosyasını `.env` olarak kopyalayın ve `POSTGRES_URL` gibi gerekli değişkenleri doldurun.
-3.  **Servisi Çalıştırın:** `go run main.go`
+1.  **Bağımlılıkları Yükleyin:**
+2.  **Ortam Değişkenlerini Ayarlayın:** `.env.example` dosyasını `.env` olarak kopyalayın ve gerekli değişkenleri doldurun.
+3.  **Servisi Çalıştırın:**
 
 ## 🤝 Katkıda Bulunma
 
