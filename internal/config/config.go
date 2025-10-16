@@ -39,7 +39,7 @@ func Load() (*Config, error) {
 		CertPath:     GetEnvOrFail("USER_SERVICE_CERT_PATH"),
 		KeyPath:      GetEnvOrFail("USER_SERVICE_KEY_PATH"),
 		CaPath:       GetEnvOrFail("GRPC_TLS_CA_PATH"),
-		SipRealm:     GetEnvOrFail("SIP_SIGNALING_REALM"),
+		SipRealm:     GetEnvOrFail("SIP_SIGNALING_SERVICE_REALM"),
 		MaxDBRetries: maxRetries,
 		// YENİ ALANLARI DOLDURUYORUZ
 		LogLevel:     GetEnv("LOG_LEVEL", "info"),
