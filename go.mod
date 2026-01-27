@@ -6,8 +6,9 @@ require (
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/joho/godotenv v1.5.1
 	github.com/rs/zerolog v1.34.0
-	github.com/sentiric/sentiric-contracts v1.8.9
-	google.golang.org/grpc v1.75.0
+	// GÜNCELLEME: Kritik versiyon yükseltmesi (v1.8.9 -> v1.13.5)
+	github.com/sentiric/sentiric-contracts v1.13.5
+	google.golang.org/grpc v1.75.1
 )
 
 require (
@@ -22,5 +23,5 @@ require (
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250707201910-8d1bb00bc6a7 // indirect
-	google.golang.org/protobuf v1.36.8 // indirect
+	google.golang.org/protobuf v1.36.10 // indirect
 )
