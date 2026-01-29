@@ -7,7 +7,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/rs/zerolog v1.34.0
 	// GÜNCELLEME: Kritik versiyon yükseltmesi (v1.8.9 -> v1.13.5)
-	github.com/sentiric/sentiric-contracts v1.13.5
+	github.com/sentiric/sentiric-contracts v1.13.6
 	google.golang.org/grpc v1.75.1
 )
 
