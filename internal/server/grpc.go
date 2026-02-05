@@ -80,10 +80,10 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "FindUserByContact").Str("contact_value", req.GetContactValue()).Logger()
 	l.Info().Msg("İletişim bilgisi ile kullanıcı arama isteği alındı")
 
-	// [ARCHITECTURAL CHANGE - UES 1.0]
-	// Normalizasyon buradan KALDIRILDI.
-	// Bu servis "Kasa" (Vault) görevi görür. Sorgulanan veri neyse, veritabanında aynısı aranır.
-	// Veri temizliği ve standardizasyonu çağıran servisin (Dialplan) sorumluluğundadır.
+	// [ARCHITECTURAL DECISION: UES 1.0]
+	// "Dumb Vault" Prensibi: Okuma işlemlerinde veriyi normalize etmiyoruz.
+	// Bize ne sorulursa veritabanında birebir onu arıyoruz.
+	// Veri temizliği, çağıran servisin (Dialplan Service) sorumluluğundadır.
 	contactValue := req.GetContactValue()
 
 	query := `
@@ -125,8 +125,9 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "CreateUser").Str("tenant_id", req.GetTenantId()).Logger()
 	l.Info().Msg("Kullanıcı oluşturma isteği alındı")
 
-	// [ARCHITECTURAL RULE]
-	// Veritabanına YAZARKEN normalizasyon yapılmalıdır. Bu, veritabanı bütünlüğünü korur.
+	// [ARCHITECTURAL DECISION]
+	// "Write Integrity" Prensibi: Veritabanına yazarken normalizasyon User Service'in sorumluluğundadır.
+	// Bu, veritabanındaki verinin her zaman standart formatta olmasını garanti eder.
 	normalizedValue := req.InitialContact.GetContactValue()
 	if req.InitialContact.GetContactType() == "phone" {
 		normalizedValue = normalizePhoneNumber(req.InitialContact.GetContactValue())
@@ -326,7 +327,6 @@ func getLoggerWithTraceID(ctx context.Context, baseLogger zerolog.Logger) zerolo
 }
 
 // normalizePhoneNumber: Telefon numarasını veritabanı formatına (genellikle 90...) çevirir.
-// Write-path (CreateUser) için hala gereklidir.
 func normalizePhoneNumber(phone string) string {
 	phone = strings.TrimPrefix(phone, "+")
 	if strings.HasPrefix(phone, "0") {
