@@ -80,11 +80,11 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "FindUserByContact").Str("contact_value", req.GetContactValue()).Logger()
 	l.Info().Msg("İletişim bilgisi ile kullanıcı arama isteği alındı")
 
-	normalizedValue := req.GetContactValue()
-	if req.GetContactType() == "phone" {
-		normalizedValue = normalizePhoneNumber(req.GetContactValue())
-		l.Debug().Str("original", req.GetContactValue()).Str("normalized", normalizedValue).Msg("Telefon numarası sorgu için normalize edildi.")
-	}
+	// [ARCHITECTURAL CHANGE - UES 1.0]
+	// Normalizasyon buradan KALDIRILDI.
+	// Bu servis "Kasa" (Vault) görevi görür. Sorgulanan veri neyse, veritabanında aynısı aranır.
+	// Veri temizliği ve standardizasyonu çağıran servisin (Dialplan) sorumluluğundadır.
+	contactValue := req.GetContactValue()
 
 	query := `
 		SELECT u.id, u.name, u.tenant_id, u.user_type, u.preferred_language_code
@@ -92,14 +92,14 @@ func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByCo
 		JOIN contacts c ON u.id = c.user_id
 		WHERE c.contact_type = $1 AND c.contact_value = $2
 	`
-	row := s.db.QueryRowContext(ctx, query, req.GetContactType(), normalizedValue)
+	row := s.db.QueryRowContext(ctx, query, req.GetContactType(), contactValue)
 	var user userv1.User
 	var name, langCode sql.NullString
 	err := row.Scan(&user.Id, &name, &user.TenantId, &user.UserType, &langCode)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			l.Info().Msg("İletişim bilgisiyle eşleşen kullanıcı bulunamadı")
-			return nil, status.Errorf(codes.NotFound, "Kullanıcı bulunamadı: %s", req.GetContactValue())
+			return nil, status.Errorf(codes.NotFound, "Kullanıcı bulunamadı: %s", contactValue)
 		}
 		l.Error().Err(err).Msg("Veritabanı sorgu hatası")
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası: %v", err)
@@ -125,6 +125,8 @@ func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) 
 	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "CreateUser").Str("tenant_id", req.GetTenantId()).Logger()
 	l.Info().Msg("Kullanıcı oluşturma isteği alındı")
 
+	// [ARCHITECTURAL RULE]
+	// Veritabanına YAZARKEN normalizasyon yapılmalıdır. Bu, veritabanı bütünlüğünü korur.
 	normalizedValue := req.InitialContact.GetContactValue()
 	if req.InitialContact.GetContactType() == "phone" {
 		normalizedValue = normalizePhoneNumber(req.InitialContact.GetContactValue())
@@ -323,6 +325,8 @@ func getLoggerWithTraceID(ctx context.Context, baseLogger zerolog.Logger) zerolo
 	return baseLogger
 }
 
+// normalizePhoneNumber: Telefon numarasını veritabanı formatına (genellikle 90...) çevirir.
+// Write-path (CreateUser) için hala gereklidir.
 func normalizePhoneNumber(phone string) string {
 	phone = strings.TrimPrefix(phone, "+")
 	if strings.HasPrefix(phone, "0") {
