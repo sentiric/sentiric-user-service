@@ -29,6 +29,7 @@ func NewUserService(repo repository.UserRepository, cfg *config.Config, log zero
 
 // --- Business Logic ---
 
+// GetUser: [FIXED Signature] Artık (Response, error) döndürüyor.
 func (s *userService) GetUser(ctx context.Context, req *userv1.GetUserRequest) (*userv1.GetUserResponse, error) {
 	user, err := s.repo.FetchUserByID(ctx, req.GetUserId())
 	if err != nil {
@@ -54,7 +55,6 @@ func (s *userService) FindUserByContact(ctx context.Context, req *userv1.FindUse
 }
 
 func (s *userService) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) (*userv1.CreateUserResponse, error) {
-	// Business Logic: Contact değeri normalizasyonu (Write Integrity)
 	normalizedValue := req.InitialContact.GetContactValue()
 	if req.InitialContact.GetContactType() == "phone" {
 		normalizedValue = normalizePhoneNumber(req.InitialContact.GetContactValue())
@@ -79,6 +79,11 @@ func (s *userService) CreateUser(ctx context.Context, req *userv1.CreateUserRequ
 }
 
 func (s *userService) GetSipCredentials(ctx context.Context, req *userv1.GetSipCredentialsRequest) (*userv1.GetSipCredentialsResponse, error) {
+	s.log.Debug().
+		Str("username", req.SipUsername).
+		Str("requested_realm", req.Realm).
+		Msg("🔑 Fetching SIP credentials")
+
 	userID, tenantID, ha1Hash, err := s.repo.FetchSipCredentials(ctx, req.GetSipUsername())
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -87,30 +92,44 @@ func (s *userService) GetSipCredentials(ctx context.Context, req *userv1.GetSipC
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
 	}
 
-	return &userv1.GetSipCredentialsResponse{UserId: userID, TenantId: tenantID, Ha1Hash: ha1Hash}, nil
+	// [SECURITY]: Realm doğrulaması ve uyarı logu
+	if req.Realm != "" && req.Realm != s.config.SipRealm {
+		s.log.Warn().
+			Str("expected", s.config.SipRealm).
+			Str("received", req.Realm).
+			Msg("⚠️ Realm mismatch detected during authentication!")
+	}
+
+	return &userv1.GetSipCredentialsResponse{
+		UserId:   userID,
+		TenantId: tenantID,
+		Ha1Hash:  ha1Hash,
+	}, nil
 }
 
 func (s *userService) CreateSipCredential(ctx context.Context, req *userv1.CreateSipCredentialRequest) (*userv1.CreateSipCredentialResponse, error) {
-	// 1. Kullanıcının varlığını kontrol et (tenantId almak için)
 	_, err := s.repo.FetchUserByID(ctx, req.UserId)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, status.Errorf(codes.NotFound, "İlişkili kullanıcı bulunamadı: %s", req.UserId)
+			return nil, status.Errorf(codes.NotFound, "İlişkili kullanıcı bulunamadı")
 		}
-		return nil, status.Errorf(codes.Internal, "Kullanıcı sorgulanamadı: %v", err)
+		return nil, status.Errorf(codes.Internal, "Kullanıcı sorgulanamadı")
 	}
 
-	// 2. HA1 Hash'i Hesapla (Security Logic)
 	realm := s.config.SipRealm
 	h := md5.New()
 	io.WriteString(h, fmt.Sprintf("%s:%s:%s", req.SipUsername, realm, req.Password))
 	ha1Hash := fmt.Sprintf("%x", h.Sum(nil))
 
-	// 3. Veritabanına Kaydet
+	s.log.Info().
+		Str("username", req.SipUsername).
+		Str("realm", realm).
+		Msg("📝 Creating new SIP credential")
+
 	err = s.repo.CreateSipCredential(ctx, req.UserId, req.SipUsername, ha1Hash)
 	if err != nil {
 		if errors.Is(err, repository.ErrConflict) {
-			return nil, status.Errorf(codes.AlreadyExists, "Bu SIP kullanıcı adı zaten mevcut: %s", req.SipUsername)
+			return nil, status.Errorf(codes.AlreadyExists, "Bu SIP kullanıcı adı zaten mevcut")
 		}
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
 	}
@@ -122,14 +141,14 @@ func (s *userService) DeleteSipCredential(ctx context.Context, req *userv1.Delet
 	err := s.repo.DeleteSipCredential(ctx, req.SipUsername)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, status.Errorf(codes.NotFound, "Silinecek SIP kullanıcısı bulunamadı: %s", req.SipUsername)
+			return nil, status.Errorf(codes.NotFound, "Silinecek SIP kullanıcısı bulunamadı")
 		}
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
 	}
 	return &userv1.DeleteSipCredentialResponse{Success: true}, nil
 }
 
-// --- Utility Functions (Clean Architecture dışına çıkarılabilir, şimdilik burada kalabilir) ---
+// --- Helpers ---
 
 func normalizePhoneNumber(phone string) string {
 	phone = strings.TrimPrefix(phone, "+")

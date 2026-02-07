@@ -6,8 +6,8 @@ require (
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/joho/godotenv v1.5.1
 	github.com/rs/zerolog v1.34.0
-	// GÜNCELLEME: Kritik versiyon yükseltmesi (v1.8.9 -> v1.13.5)
-	github.com/sentiric/sentiric-contracts v1.13.7
+	// GÜNCELLEME: v1.15.0 (Realm-aware SIP Auth)
+	github.com/sentiric/sentiric-contracts v1.15.0
 	google.golang.org/grpc v1.75.1
 )
 
