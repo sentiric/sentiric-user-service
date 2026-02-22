@@ -2,11 +2,11 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 
 	"github.com/joho/godotenv"
-	"github.com/rs/zerolog/log"
 )
 
 type Config struct {
@@ -18,17 +18,20 @@ type Config struct {
 	CaPath       string
 	SipRealm     string
 	MaxDBRetries int
-	// YENİ ALAN: Log seviyesini de config'den okuyacağız.
-	LogLevel     string
-	Env          string
+	// SUTS v4.0 Alanları
+	LogLevel       string
+	LogFormat      string
+	Env            string
+	NodeHostname   string // YENİ
+	ServiceVersion string
 }
 
 func Load() (*Config, error) {
-	godotenv.Load()
+	// Sessiz yükleme
+	_ = godotenv.Load()
 
 	maxRetries, err := strconv.Atoi(GetEnv("MAX_DB_RETRIES", "10"))
 	if err != nil {
-		log.Warn().Str("value", GetEnv("MAX_DB_RETRIES", "10")).Msg("Geçersiz MAX_DB_RETRIES değeri, varsayılan (10) kullanılıyor.")
 		maxRetries = 10
 	}
 
@@ -41,9 +44,12 @@ func Load() (*Config, error) {
 		CaPath:       GetEnvOrFail("GRPC_TLS_CA_PATH"),
 		SipRealm:     GetEnvOrFail("SIP_SIGNALING_SERVICE_REALM"),
 		MaxDBRetries: maxRetries,
-		// YENİ ALANLARI DOLDURUYORUZ
-		LogLevel:     GetEnv("LOG_LEVEL", "info"),
-		Env:          GetEnv("ENV", "production"),
+		// SUTS Config
+		LogLevel:       GetEnv("LOG_LEVEL", "info"),
+		LogFormat:      GetEnv("LOG_FORMAT", "json"), // Prod default: json
+		Env:            GetEnv("ENV", "production"),
+		NodeHostname:   GetEnv("NODE_HOSTNAME", "localhost"),
+		ServiceVersion: GetEnv("SERVICE_VERSION", "1.0.0"),
 	}, nil
 }
 
@@ -57,12 +63,8 @@ func GetEnv(key, fallback string) string {
 func GetEnvOrFail(key string) string {
 	value, exists := os.LookupEnv(key)
 	if !exists {
-		log.Fatal().Str("variable", key).Msg("Gerekli ortam değişkeni tanımlı değil")
+		fmt.Fprintf(os.Stderr, "Kritik Hata: Gerekli ortam değişkeni tanımlı değil: %s\n", key)
+		os.Exit(1)
 	}
 	return value
 }
-
-// GetEnv metodunu Config struct'ından kaldırıyoruz çünkü artık doğrudan kullanılıyor.
-// func (c *Config) GetEnv(key, fallback string) string {
-// 	return GetEnv(key, fallback)
-// }

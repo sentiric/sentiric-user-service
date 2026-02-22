@@ -1,10 +1,10 @@
-// sentiric-user-service/cmd/user-service/main.go
 package main
 
 import (
 	"fmt"
 	"os"
 
+	"github.com/rs/zerolog"
 	"github.com/sentiric/sentiric-user-service/internal/app"
 	"github.com/sentiric/sentiric-user-service/internal/config"
 	"github.com/sentiric/sentiric-user-service/internal/logger"
@@ -25,14 +25,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := logger.New(serviceName, cfg.Env, cfg.LogLevel)
+	log := logger.New(
+		serviceName,
+		cfg.ServiceVersion,
+		cfg.Env,
+		cfg.NodeHostname,
+		cfg.LogLevel,
+		cfg.LogFormat,
+	)
 
 	log.Info().
-		Str("version", ServiceVersion).
-		Str("commit", GitCommit).
-		Str("build_date", BuildDate).
-		Str("profile", cfg.Env).
-		Msg("🚀 Sentiric User Service başlatılıyor...")
+		Str("event", logger.EventSystemStartup).
+		Dict("attributes", zerolog.Dict().
+			Str("commit", GitCommit).
+			Str("build_date", BuildDate).
+			Str("profile", cfg.Env)).
+		Msg("🚀 sentiric-user-service başlatılıyor (SUTS v4.0)...")
 
 	application := app.NewApp(cfg, log)
 	application.Run()

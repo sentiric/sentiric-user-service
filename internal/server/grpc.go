@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	userv1 "github.com/sentiric/sentiric-contracts/gen/go/sentiric/user/v1"
 	"github.com/sentiric/sentiric-user-service/internal/config"
+	"github.com/sentiric/sentiric-user-service/internal/logger"
 	"github.com/sentiric/sentiric-user-service/internal/service"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -19,17 +20,14 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
-// GrpcServer'ı bir Go'nun yerel gRPC sunucusunu kapsayacak şekilde tip alias yapalım.
 type GrpcServer = grpc.Server
 
-// server struct'ı, Service Layer'ı (İş Mantığı) tutar.
 type server struct {
 	userv1.UnimplementedUserServiceServer
 	svc service.UserService
 	log zerolog.Logger
 }
 
-// NewGrpcServer, Service Layer'ı alarak Handler'ı oluşturur.
 func NewGrpcServer(svc service.UserService, cfg *config.Config, log zerolog.Logger) *GrpcServer {
 	creds, err := loadServerTLS(cfg.CertPath, cfg.KeyPath, cfg.CaPath, log)
 	if err != nil {
@@ -42,7 +40,6 @@ func NewGrpcServer(svc service.UserService, cfg *config.Config, log zerolog.Logg
 	return grpcServer
 }
 
-// Start, verilen gRPC sunucusunu belirtilen portta dinlemeye başlar.
 func Start(grpcServer *GrpcServer, port string) error {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
 	if err != nil {
@@ -54,40 +51,82 @@ func Start(grpcServer *GrpcServer, port string) error {
 	return nil
 }
 
-// Stop, gRPC sunucusunu zarif bir şekilde (gracefully) durdurur.
 func Stop(grpcServer *GrpcServer) {
 	grpcServer.GracefulStop()
 }
 
-// --- gRPC Metot Implementasyonları (Handler) ---
+// --- Handler Implementations ---
+
+func (s *server) propagateTrace(ctx context.Context) context.Context {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ctx
+	}
+	return metadata.NewOutgoingContext(ctx, md)
+}
 
 func (s *server) GetUser(ctx context.Context, req *userv1.GetUserRequest) (*userv1.GetUserResponse, error) {
-	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "GetUser").Logger()
-	l.Info().Str("user_id", req.GetUserId()).Msg("İstek Service Layer'a devrediliyor")
+	l := logger.ContextLogger(ctx, s.log)
+	l.Info().
+		Str("event", logger.EventGrpcRequest).
+		Dict("attributes", zerolog.Dict().
+			Str("method", "GetUser").
+			Str("user_id", req.GetUserId())).
+		Msg("gRPC İstek Alındı")
+
+	ctx = s.propagateTrace(ctx)
 	return s.svc.GetUser(ctx, req)
 }
 
 func (s *server) FindUserByContact(ctx context.Context, req *userv1.FindUserByContactRequest) (*userv1.FindUserByContactResponse, error) {
-	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "FindUserByContact").Logger()
-	l.Info().Str("contact_value", req.GetContactValue()).Msg("İstek Service Layer'a devrediliyor")
+	l := logger.ContextLogger(ctx, s.log)
+	l.Info().
+		Str("event", logger.EventGrpcRequest).
+		Dict("attributes", zerolog.Dict().
+			Str("method", "FindUserByContact").
+			Str("contact_type", req.GetContactType()).
+			Str("contact_value", req.GetContactValue())).
+		Msg("gRPC İstek Alındı")
+
+	ctx = s.propagateTrace(ctx)
 	return s.svc.FindUserByContact(ctx, req)
 }
 
 func (s *server) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) (*userv1.CreateUserResponse, error) {
-	l := getLoggerWithTraceID(ctx, s.log).With().Str("method", "CreateUser").Logger()
-	l.Info().Str("tenant_id", req.GetTenantId()).Msg("İstek Service Layer'a devrediliyor")
+	l := logger.ContextLogger(ctx, s.log)
+	l.Info().
+		Str("event", logger.EventGrpcRequest).
+		Dict("attributes", zerolog.Dict().
+			Str("method", "CreateUser").
+			Str("tenant_id", req.GetTenantId())).
+		Msg("gRPC İstek Alındı")
+
+	ctx = s.propagateTrace(ctx)
 	return s.svc.CreateUser(ctx, req)
 }
 
 func (s *server) GetSipCredentials(ctx context.Context, req *userv1.GetSipCredentialsRequest) (*userv1.GetSipCredentialsResponse, error) {
+	l := logger.ContextLogger(ctx, s.log)
+	// Password/Auth isteklerini INFO seviyesinde basarken dikkatli olunmalı.
+	// Kullanıcı adı güvenlidir.
+	l.Info().
+		Str("event", logger.EventGrpcRequest).
+		Dict("attributes", zerolog.Dict().
+			Str("method", "GetSipCredentials").
+			Str("username", req.GetSipUsername())).
+		Msg("SIP Auth İsteği Alındı")
+
+	ctx = s.propagateTrace(ctx)
 	return s.svc.GetSipCredentials(ctx, req)
 }
 
 func (s *server) CreateSipCredential(ctx context.Context, req *userv1.CreateSipCredentialRequest) (*userv1.CreateSipCredentialResponse, error) {
+	ctx = s.propagateTrace(ctx)
 	return s.svc.CreateSipCredential(ctx, req)
 }
 
 func (s *server) DeleteSipCredential(ctx context.Context, req *userv1.DeleteSipCredentialRequest) (*userv1.DeleteSipCredentialResponse, error) {
+	ctx = s.propagateTrace(ctx)
 	return s.svc.DeleteSipCredential(ctx, req)
 }
 
@@ -112,16 +151,4 @@ func loadServerTLS(certPath, keyPath, caPath string, log zerolog.Logger) (creden
 		ClientCAs:    caPool,
 	}
 	return credentials.NewTLS(tlsConfig), nil
-}
-
-func getLoggerWithTraceID(ctx context.Context, baseLogger zerolog.Logger) zerolog.Logger {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return baseLogger
-	}
-	traceIDValues := md.Get("x-trace-id")
-	if len(traceIDValues) > 0 {
-		return baseLogger.With().Str("trace_id", traceIDValues[0]).Logger()
-	}
-	return baseLogger
 }
