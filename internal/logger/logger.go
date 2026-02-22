@@ -13,7 +13,31 @@ import (
 
 const (
 	SchemaVersion = "1.0.0"
+	DefaultTenant = "system"
 )
+
+// SutsHook: Her log satırına SUTS zorunlu alanlarını ekler.
+type SutsHook struct {
+	Resource map[string]string
+}
+
+func (h SutsHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
+	// 1. Governance
+	e.Str("schema_v", SchemaVersion)
+
+	// [CRITICAL FIX]: Zerolog, .Str() ile aynı key'i verirsek ezer.
+	// Eğer servis katmanında ("tenant_id", "xyz") verilmemişse, buradaki DefaultTenant eklenir.
+	// Eğer verilmişse, JSON içinde iki tane "tenant_id" oluşur ama Observer sonuncuyu dikkate alır.
+	// Güvenli fallback (boş gelmesini engellemek) için varsayılanı ekliyoruz.
+	e.Str("tenant_id", DefaultTenant)
+
+	// 2. Resource (Nested Object)
+	dict := zerolog.Dict()
+	for k, v := range h.Resource {
+		dict.Str(k, v)
+	}
+	e.Dict("resource", dict)
+}
 
 func New(serviceName, version, env, hostname, logLevel, logFormat string) zerolog.Logger {
 	level, err := zerolog.ParseLevel(logLevel)
