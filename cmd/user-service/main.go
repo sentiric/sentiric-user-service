@@ -1,3 +1,4 @@
+// sentiric-user-service/cmd/user-service/main.go
 package main
 
 import (
@@ -40,7 +41,7 @@ func main() {
 			Str("commit", GitCommit).
 			Str("build_date", BuildDate).
 			Str("profile", cfg.Env)).
-		Msg("🚀 sentiric-user-service başlatılıyor (SUTS v4.0)...")
+		Msg("🚀 Sentiric User Service başlatılıyor (SUTS v4.0)...")
 
 	application := app.NewApp(cfg, log)
 	application.Run()

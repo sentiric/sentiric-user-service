@@ -1,25 +1,17 @@
 // sentiric-user-service/internal/logger/events.go
 package logger
 
-// SUTS v4.0 Standard Event IDs
-// Bu sabitler, Observer servisinin logları renklendirmesi ve gruplaması için kritiktir.
+// SUTS v4.0 Standard Event IDs for user-service
 const (
-	// System Lifecycle
-	EventSystemStartup = "SYSTEM_STARTUP"
-
-	// Transport
-	EventGrpcRequest = "GRPC_REQUEST_RECEIVED"
-
-	// Business Logic - User
+	EventSystemStartup    = "SYSTEM_STARTUP"
+	EventGrpcRequest      = "GRPC_REQUEST_RECEIVED"
 	EventUserLookup       = "USER_LOOKUP"
-	EventUserLookupFailed = "USER_LOOKUP_FAILED" // Derleme hatasını çözen sabit
+	EventUserLookupFailed = "USER_LOOKUP_FAILED"
 	EventUserCreated      = "USER_CREATED"
 	EventUserUpdated      = "USER_UPDATED"
 	EventUserConflict     = "USER_CREATION_CONFLICT"
-
-	// Business Logic - SIP Auth (Security Critical)
-	EventSipAuthAttempt = "SIP_AUTH_ATTEMPT"
-	EventSipAuthSuccess = "SIP_AUTH_SUCCESS"
-	EventSipAuthFailure = "SIP_AUTH_FAILURE"
-	EventSipCredCreated = "SIP_CREDENTIAL_CREATED"
+	EventSipAuthAttempt   = "SIP_AUTH_ATTEMPT"
+	EventSipAuthSuccess   = "SIP_AUTH_SUCCESS"
+	EventSipAuthFailure   = "SIP_AUTH_FAILURE"
+	EventSipCredCreated   = "SIP_CREDENTIAL_CREATED"
 )

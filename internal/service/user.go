@@ -28,82 +28,44 @@ func NewUserService(repo repository.UserRepository, cfg *config.Config, log zero
 	return &userService{repo: repo, config: cfg, log: log}
 }
 
-// --- Business Logic ---
-
 func (s *userService) GetUser(ctx context.Context, req *userv1.GetUserRequest) (*userv1.GetUserResponse, error) {
 	l := logger.ContextLogger(ctx, s.log)
-
 	user, err := s.repo.FetchUserByID(ctx, req.GetUserId())
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			l.Warn().
-				Str("event", logger.EventUserLookupFailed).
-				Dict("attributes", zerolog.Dict().
-					Str("reason", "not_found").
-					Str("user_id", req.GetUserId())).
-				Msg("Kullanıcı bulunamadı")
+			l.Warn().Str("event", logger.EventUserLookupFailed).Msg("Kullanıcı bulunamadı")
 			return nil, status.Errorf(codes.NotFound, "Kullanıcı bulunamadı: %s", req.GetUserId())
 		}
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
 	}
-
-	l.Debug().
-		Str("event", logger.EventUserLookup).
-		Dict("attributes", zerolog.Dict().
-			Str("user_id", user.Id).
-			Str("tenant_id", user.TenantId)).
-		Msg("Kullanıcı başarıyla getirildi")
-
 	return &userv1.GetUserResponse{User: user}, nil
 }
 
 func (s *userService) FindUserByContact(ctx context.Context, req *userv1.FindUserByContactRequest) (*userv1.FindUserByContactResponse, error) {
 	l := logger.ContextLogger(ctx, s.log)
 	contactValue := normalizePhoneNumber(req.GetContactValue())
-
 	user, err := s.repo.FetchUserByContact(ctx, req.GetContactType(), contactValue)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			l.Info().
-				Str("event", logger.EventUserLookupFailed).
-				Dict("attributes", zerolog.Dict().
-					Str("contact_type", req.GetContactType()).
-					Str("contact_value", contactValue)).
-				Msg("İletişim bilgisine ait kullanıcı yok")
-
+			l.Info().Str("event", logger.EventUserLookupFailed).Msg("İletişim bilgisine ait kullanıcı yok")
 			return nil, status.Errorf(codes.NotFound, "Kullanıcı bulunamadı: %s", req.GetContactValue())
 		}
 		l.Error().Err(err).Msg("Veritabanı hatası")
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
 	}
-
-	// [SUTS]: Kullanıcı bulundu
-	l.Info().
-		Str("event", logger.EventUserLookup).
-		Dict("attributes", zerolog.Dict().
-			Str("user_id", user.Id).
-			Str("tenant_id", user.TenantId).
-			Str("contact_type", req.GetContactType())).
-		Msg("Kullanıcı iletişim bilgisiyle bulundu")
-
+	l.Info().Str("event", logger.EventUserLookup).Msg("Kullanıcı iletişim bilgisiyle bulundu")
 	return &userv1.FindUserByContactResponse{User: user}, nil
 }
 
 func (s *userService) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) (*userv1.CreateUserResponse, error) {
 	l := logger.ContextLogger(ctx, s.log)
-
 	normalizedValue := req.InitialContact.GetContactValue()
 	if req.InitialContact.GetContactType() == "phone" {
 		normalizedValue = normalizePhoneNumber(req.InitialContact.GetContactValue())
 	}
-
 	newUser := &userv1.User{
-		Name:                  req.Name,
-		TenantId:              req.TenantId,
-		UserType:              req.UserType,
-		PreferredLanguageCode: req.PreferredLanguageCode,
+		Name: req.Name, TenantId: req.TenantId, UserType: req.UserType, PreferredLanguageCode: req.PreferredLanguageCode,
 	}
-
 	user, err := s.repo.CreateUser(ctx, newUser, req.InitialContact, normalizedValue)
 	if err != nil {
 		if errors.Is(err, repository.ErrConflict) {
@@ -113,72 +75,31 @@ func (s *userService) CreateUser(ctx context.Context, req *userv1.CreateUserRequ
 		l.Error().Err(err).Msg("Kullanıcı oluşturma hatası")
 		return nil, status.Errorf(codes.Internal, "Kullanıcı oluşturulamadı: %v", err)
 	}
-
-	// [SUTS]: AUDIT LOG
-	l.Info().
-		Str("event", logger.EventUserCreated).
-		Dict("attributes", zerolog.Dict().
-			Str("user_id", user.Id).
-			Str("tenant_id", user.TenantId).
-			Str("user_type", user.UserType)).
-		Msg("Yeni kullanıcı başarıyla oluşturuldu")
-
+	l.Info().Str("event", logger.EventUserCreated).Str("tenant_id", user.TenantId).Dict("attributes", zerolog.Dict().Str("user_id", user.Id).Str("user_type", user.UserType)).Msg("Yeni kullanıcı başarıyla oluşturuldu")
 	return &userv1.CreateUserResponse{User: user}, nil
 }
 
 func (s *userService) GetSipCredentials(ctx context.Context, req *userv1.GetSipCredentialsRequest) (*userv1.GetSipCredentialsResponse, error) {
 	l := logger.ContextLogger(ctx, s.log)
-
-	l.Debug().
-		Str("event", logger.EventSipAuthAttempt).
-		Dict("attributes", zerolog.Dict().
-			Str("username", req.SipUsername).
-			Str("requested_realm", req.Realm)).
-		Msg("SIP Kimlik Bilgileri İsteniyor")
-
+	l.Debug().Str("event", logger.EventSipAuthAttempt).Dict("attributes", zerolog.Dict().Str("username", req.SipUsername).Str("requested_realm", req.Realm)).Msg("SIP Kimlik Bilgileri İsteniyor")
 	userID, tenantID, ha1Hash, err := s.repo.FetchSipCredentials(ctx, req.GetSipUsername())
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			l.Warn().
-				Str("event", logger.EventSipAuthFailure).
-				Dict("attributes", zerolog.Dict().
-					Str("reason", "user_not_found").
-					Str("username", req.GetSipUsername())).
-				Msg("SIP Auth Başarısız: Kullanıcı yok")
-
+			l.Warn().Str("event", logger.EventSipAuthFailure).Dict("attributes", zerolog.Dict().Str("reason", "user_not_found").Str("username", req.GetSipUsername())).Msg("SIP Auth Başarısız: Kullanıcı yok")
 			return nil, status.Errorf(codes.NotFound, "SIP kullanıcısı bulunamadı: %s", req.GetSipUsername())
 		}
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
 	}
-
-	// Realm Check
 	if req.Realm != "" && req.Realm != s.config.SipRealm {
-		l.Warn().
-			Str("event", logger.EventSipAuthFailure).
-			Dict("attributes", zerolog.Dict().
-				Str("reason", "realm_mismatch").
-				Str("expected", s.config.SipRealm).
-				Str("received", req.Realm)).
-			Msg("SIP Auth Uyarısı: Realm uyuşmazlığı")
+		l.Warn().Str("event", logger.EventSipAuthFailure).Dict("attributes", zerolog.Dict().Str("reason", "realm_mismatch").Str("expected", s.config.SipRealm).Str("received", req.Realm)).Msg("SIP Auth Uyarısı: Realm uyuşmazlığı")
 	} else {
-		l.Info().
-			Str("event", logger.EventSipAuthSuccess).
-			Dict("attributes", zerolog.Dict().
-				Str("user_id", userID).
-				Str("tenant_id", tenantID)).
-			Msg("SIP Kimlik Bilgileri Sağlandı")
+		l.Info().Str("event", logger.EventSipAuthSuccess).Dict("attributes", zerolog.Dict().Str("user_id", userID).Str("tenant_id", tenantID)).Msg("SIP Kimlik Bilgileri Sağlandı")
 	}
-
-	return &userv1.GetSipCredentialsResponse{
-		UserId:   userID,
-		TenantId: tenantID,
-		Ha1Hash:  ha1Hash,
-	}, nil
+	return &userv1.GetSipCredentialsResponse{UserId: userID, TenantId: tenantID, Ha1Hash: ha1Hash}, nil
 }
 
 func (s *userService) CreateSipCredential(ctx context.Context, req *userv1.CreateSipCredentialRequest) (*userv1.CreateSipCredentialResponse, error) {
 	l := logger.ContextLogger(ctx, s.log)
-
 	_, err := s.repo.FetchUserByID(ctx, req.UserId)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -186,12 +107,10 @@ func (s *userService) CreateSipCredential(ctx context.Context, req *userv1.Creat
 		}
 		return nil, status.Errorf(codes.Internal, "Kullanıcı sorgulanamadı")
 	}
-
 	realm := s.config.SipRealm
 	h := md5.New()
 	io.WriteString(h, fmt.Sprintf("%s:%s:%s", req.SipUsername, realm, req.Password))
 	ha1Hash := fmt.Sprintf("%x", h.Sum(nil))
-
 	err = s.repo.CreateSipCredential(ctx, req.UserId, req.SipUsername, ha1Hash)
 	if err != nil {
 		if errors.Is(err, repository.ErrConflict) {
@@ -199,15 +118,7 @@ func (s *userService) CreateSipCredential(ctx context.Context, req *userv1.Creat
 		}
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
 	}
-
-	l.Info().
-		Str("event", logger.EventSipCredCreated).
-		Dict("attributes", zerolog.Dict().
-			Str("user_id", req.UserId).
-			Str("sip_username", req.SipUsername).
-			Str("realm", realm)).
-		Msg("Yeni SIP kimliği oluşturuldu")
-
+	l.Info().Str("event", logger.EventSipCredCreated).Dict("attributes", zerolog.Dict().Str("user_id", req.UserId).Str("sip_username", req.SipUsername).Str("realm", realm)).Msg("Yeni SIP kimliği oluşturuldu")
 	return &userv1.CreateSipCredentialResponse{Success: true}, nil
 }
 

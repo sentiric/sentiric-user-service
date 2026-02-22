@@ -10,24 +10,22 @@ import (
 )
 
 type Config struct {
-	DatabaseURL  string
-	GRPCPort     string
-	HttpPort     string
-	CertPath     string
-	KeyPath      string
-	CaPath       string
-	SipRealm     string
-	MaxDBRetries int
-	// SUTS v4.0 Alanları
+	DatabaseURL    string
+	GRPCPort       string
+	HttpPort       string
+	CertPath       string
+	KeyPath        string
+	CaPath         string
+	SipRealm       string
+	MaxDBRetries   int
 	LogLevel       string
 	LogFormat      string
 	Env            string
-	NodeHostname   string // YENİ
+	NodeHostname   string
 	ServiceVersion string
 }
 
 func Load() (*Config, error) {
-	// Sessiz yükleme
 	_ = godotenv.Load()
 
 	maxRetries, err := strconv.Atoi(GetEnv("MAX_DB_RETRIES", "10"))
@@ -36,17 +34,16 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		DatabaseURL:  GetEnvOrFail("POSTGRES_URL"),
-		GRPCPort:     GetEnv("USER_SERVICE_GRPC_PORT", "12011"),
-		HttpPort:     GetEnv("USER_SERVICE_HTTP_PORT", "12010"),
-		CertPath:     GetEnvOrFail("USER_SERVICE_CERT_PATH"),
-		KeyPath:      GetEnvOrFail("USER_SERVICE_KEY_PATH"),
-		CaPath:       GetEnvOrFail("GRPC_TLS_CA_PATH"),
-		SipRealm:     GetEnvOrFail("SIP_SIGNALING_SERVICE_REALM"),
-		MaxDBRetries: maxRetries,
-		// SUTS Config
+		DatabaseURL:    GetEnvOrFail("POSTGRES_URL"),
+		GRPCPort:       GetEnv("USER_SERVICE_GRPC_PORT", "12011"),
+		HttpPort:       GetEnv("USER_SERVICE_HTTP_PORT", "12010"),
+		CertPath:       GetEnvOrFail("USER_SERVICE_CERT_PATH"),
+		KeyPath:        GetEnvOrFail("USER_SERVICE_KEY_PATH"),
+		CaPath:         GetEnvOrFail("GRPC_TLS_CA_PATH"),
+		SipRealm:       GetEnvOrFail("SIP_SIGNALING_SERVICE_REALM"),
+		MaxDBRetries:   maxRetries,
 		LogLevel:       GetEnv("LOG_LEVEL", "info"),
-		LogFormat:      GetEnv("LOG_FORMAT", "json"), // Prod default: json
+		LogFormat:      GetEnv("LOG_FORMAT", "json"),
 		Env:            GetEnv("ENV", "production"),
 		NodeHostname:   GetEnv("NODE_HOSTNAME", "localhost"),
 		ServiceVersion: GetEnv("SERVICE_VERSION", "1.0.0"),
