@@ -63,7 +63,11 @@ func (s *userService) GetUser(ctx context.Context, req *userv1.GetUserRequest) (
 
 func (s *userService) FindUserByContact(ctx context.Context, req *userv1.FindUserByContactRequest) (*userv1.FindUserByContactResponse, error) {
 	l := logger.ContextLogger(ctx, s.log)
-	contactValue := normalizePhoneNumber(req.GetContactValue())
+	contactValue := req.GetContactValue()
+
+	if req.GetContactType() == "phone" {
+		contactValue = normalizePhoneNumber(contactValue)
+	}
 
 	user, err := s.repo.FetchUserByContact(ctx, req.GetContactType(), contactValue)
 	if err != nil {
@@ -75,7 +79,7 @@ func (s *userService) FindUserByContact(ctx context.Context, req *userv1.FindUse
 					Str("contact_value", contactValue)).
 				Msg("İletişim bilgisine ait kullanıcı yok")
 
-			return nil, status.Errorf(codes.NotFound, "Kullanıcı bulunamadı: %s", req.GetContactValue())
+			return nil, status.Errorf(codes.NotFound, "Kullanıcı bulunamadı: %s", contactValue)
 		}
 		l.Error().
 			Str("event", "DB_ERROR").
@@ -117,9 +121,9 @@ func (s *userService) CreateUser(ctx context.Context, req *userv1.CreateUserRequ
 			l.Warn().
 				Str("event", logger.EventUserConflict).
 				Dict("attributes", zerolog.Dict().
-					Str("contact_value", req.InitialContact.GetContactValue())).
+					Str("contact_value", normalizedValue)).
 				Msg("Kullanıcı/Kontak zaten mevcut")
-			return nil, status.Errorf(codes.AlreadyExists, "Bu iletişim bilgisi zaten kayıtlı: %s", req.InitialContact.GetContactValue())
+			return nil, status.Errorf(codes.AlreadyExists, "Bu iletişim bilgisi zaten kayıtlı: %s", normalizedValue)
 		}
 		l.Error().
 			Str("event", "USER_CREATION_FAIL").
@@ -197,7 +201,6 @@ func (s *userService) GetSipCredentials(ctx context.Context, req *userv1.GetSipC
 func (s *userService) CreateSipCredential(ctx context.Context, req *userv1.CreateSipCredentialRequest) (*userv1.CreateSipCredentialResponse, error) {
 	l := logger.ContextLogger(ctx, s.log)
 
-	// Önce kullanıcının varlığını ve tenant_id'sini doğrula
 	user, err := s.repo.FetchUserByID(ctx, req.UserId)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -258,10 +261,25 @@ func (s *userService) DeleteSipCredential(ctx context.Context, req *userv1.Delet
 	return &userv1.DeleteSipCredentialResponse{Success: true}, nil
 }
 
+// [Kritik Düzeltme]: Tam E.164 Uyumluluğu
 func normalizePhoneNumber(phone string) string {
-	phone = strings.TrimPrefix(phone, "+")
-	if strings.HasPrefix(phone, "0") {
-		return "90" + phone[1:]
+	var cleaned strings.Builder
+	for i, r := range phone {
+		if i == 0 && r == '+' {
+			cleaned.WriteRune(r)
+		} else if r >= '0' && r <= '9' {
+			cleaned.WriteRune(r)
+		}
 	}
-	return phone
+
+	result := cleaned.String()
+
+	if strings.HasPrefix(result, "0") {
+		return "+90" + result[1:]
+	}
+
+	if !strings.HasPrefix(result, "+") {
+		return "+" + result
+	}
+	return result
 }
