@@ -283,3 +283,44 @@ func normalizePhoneNumber(phone string) string {
 	}
 	return result
 }
+
+// [YENİ METOD]
+func (s *userService) GetAgentProfile(ctx context.Context, req *userv1.GetAgentProfileRequest) (*userv1.GetAgentProfileResponse, error) {
+	l := logger.ContextLogger(ctx, s.log)
+
+	// 1. Kullanıcının varlığını ve tipini kontrol et
+	user, err := s.repo.FetchUserByID(ctx, req.UserId)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, status.Errorf(codes.NotFound, "Kullanıcı bulunamadı")
+		}
+		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
+	}
+
+	if user.UserType != "agent" && user.UserType != "supervisor" {
+		l.Warn().Str("user_id", req.UserId).Str("type", user.UserType).Msg("Ajan olmayan kullanıcı profili istendi")
+		return nil, status.Errorf(codes.PermissionDenied, "Bu kullanıcı bir ajan değil")
+	}
+
+	// 2. Profili getir
+	profile, err := s.repo.GetAgentProfile(ctx, req.UserId)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			// Profil yoksa varsayılan (boş/offline) bir profil oluşturup dönelim (Lazy Init)
+			defaultProfile := &userv1.AgentProfile{
+				UserId:             req.UserId,
+				DisplayName:        user.GetName(),
+				MaxConcurrentCalls: 1,
+				Status:             "OFFLINE",
+			}
+			// DB'ye de yazalım ki bir dahaki sefere bulunsun
+			if err := s.repo.UpsertAgentProfile(ctx, defaultProfile, user.TenantId); err != nil {
+				l.Error().Err(err).Msg("Varsayılan ajan profili oluşturulamadı")
+			}
+			return &userv1.GetAgentProfileResponse{Profile: defaultProfile}, nil
+		}
+		return nil, status.Errorf(codes.Internal, "Profil sorgulama hatası")
+	}
+
+	return &userv1.GetAgentProfileResponse{Profile: profile}, nil
+}

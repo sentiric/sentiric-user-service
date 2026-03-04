@@ -7,8 +7,6 @@ import (
 	userv1 "github.com/sentiric/sentiric-contracts/gen/go/sentiric/user/v1"
 )
 
-// Hata sabitleri burada tanımlanabilir, ancak şimdilik Service katmanında tutuluyor.
-
 // UserRepository, User Service domain'i için gerekli tüm CRUD ve sorgulama işlemlerini soyutlar.
 type UserRepository interface {
 	// User CRUD
@@ -23,4 +21,8 @@ type UserRepository interface {
 
 	// Helper
 	FetchContactsForUser(ctx context.Context, userID string) ([]*userv1.Contact, error)
+
+	// [YENİ] Agent Profiles
+	GetAgentProfile(ctx context.Context, userID string) (*userv1.AgentProfile, error)
+	UpsertAgentProfile(ctx context.Context, profile *userv1.AgentProfile, tenantID string) error
 }

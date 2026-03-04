@@ -8,7 +8,6 @@ import (
 )
 
 // UserService defines the business logic methods for the User Service.
-// [MİMARİ NOT]: gRPC standartlarına uygun olarak tüm metodlar (Reply, error) döndürmelidir.
 type UserService interface {
 	GetUser(ctx context.Context, req *userv1.GetUserRequest) (*userv1.GetUserResponse, error)
 	FindUserByContact(ctx context.Context, req *userv1.FindUserByContactRequest) (*userv1.FindUserByContactResponse, error)
@@ -18,4 +17,7 @@ type UserService interface {
 	GetSipCredentials(ctx context.Context, req *userv1.GetSipCredentialsRequest) (*userv1.GetSipCredentialsResponse, error)
 	CreateSipCredential(ctx context.Context, req *userv1.CreateSipCredentialRequest) (*userv1.CreateSipCredentialResponse, error)
 	DeleteSipCredential(ctx context.Context, req *userv1.DeleteSipCredentialRequest) (*userv1.DeleteSipCredentialResponse, error)
+
+	// [YENİ] Agent Profile Management
+	GetAgentProfile(ctx context.Context, req *userv1.GetAgentProfileRequest) (*userv1.GetAgentProfileResponse, error)
 }

@@ -152,3 +152,16 @@ func loadServerTLS(certPath, keyPath, caPath string, log zerolog.Logger) (creden
 	}
 	return credentials.NewTLS(tlsConfig), nil
 }
+
+// [YENİ METOD]
+func (s *server) GetAgentProfile(ctx context.Context, req *userv1.GetAgentProfileRequest) (*userv1.GetAgentProfileResponse, error) {
+	l := logger.ContextLogger(ctx, s.log)
+	l.Debug().
+		Str("event", logger.EventGrpcRequest).
+		Str("method", "GetAgentProfile").
+		Str("user_id", req.GetUserId()).
+		Msg("Ajan profili isteği")
+
+	ctx = s.propagateTrace(ctx)
+	return s.svc.GetAgentProfile(ctx, req)
+}
