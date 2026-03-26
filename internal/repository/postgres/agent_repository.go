@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	userv1 "github.com/sentiric/sentiric-contracts/gen/go/sentiric/user/v1"
+	"github.com/sentiric/sentiric-user-service/internal/logger"
 	"github.com/sentiric/sentiric-user-service/internal/repository"
 )
 
@@ -31,7 +32,8 @@ func (r *PostgresRepository) GetAgentProfile(ctx context.Context, userID string)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, repository.ErrNotFound
 		}
-		r.log.Error().Err(err).Str("user_id", userID).Msg("Ajan profili sorgulanamadı")
+		//[ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+		r.log.Error().Str("event", logger.EventDatabaseError).Err(err).Str("user_id", userID).Msg("Ajan profili sorgulanamadı")
 		return nil, repository.ErrDatabase
 	}
 
@@ -63,7 +65,8 @@ func (r *PostgresRepository) UpsertAgentProfile(ctx context.Context, profile *us
 	)
 
 	if err != nil {
-		r.log.Error().Err(err).Msg("Ajan profili kaydedilemedi")
+		// [ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+		r.log.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("Ajan profili kaydedilemedi")
 		return repository.ErrDatabase
 	}
 	return nil

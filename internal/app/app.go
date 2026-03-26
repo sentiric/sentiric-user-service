@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/sentiric/sentiric-user-service/internal/config"
 	"github.com/sentiric/sentiric-user-service/internal/database"
+	"github.com/sentiric/sentiric-user-service/internal/logger"
 	"github.com/sentiric/sentiric-user-service/internal/repository"
 	"github.com/sentiric/sentiric-user-service/internal/repository/postgres"
 	"github.com/sentiric/sentiric-user-service/internal/server"
@@ -46,9 +47,10 @@ func (a *App) Run() {
 
 	// 4. Sunucuyu Başlat
 	go func() {
-		a.Log.Info().Str("port", a.Cfg.GRPCPort).Msg("gRPC sunucusu dinleniyor...")
+		// [ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+		a.Log.Info().Str("event", logger.EventGrpcServerStart).Str("port", a.Cfg.GRPCPort).Msg("gRPC sunucusu dinleniyor...")
 		if err := server.Start(grpcServer, a.Cfg.GRPCPort); err != nil && err.Error() != "http: Server closed" {
-			a.Log.Error().Err(err).Msg("gRPC sunucusu başlatılamadı")
+			a.Log.Error().Str("event", logger.EventGrpcServerFail).Err(err).Msg("gRPC sunucusu başlatılamadı")
 		}
 	}()
 
@@ -68,9 +70,10 @@ func (a *App) startHttpServer(port string) *http.Server {
 	srv := &http.Server{Addr: addr, Handler: mux}
 
 	go func() {
-		a.Log.Info().Str("port", port).Msg("HTTP sunucusu (health) dinleniyor")
+		//[ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+		a.Log.Info().Str("event", logger.EventHttpServerStart).Str("port", port).Msg("HTTP sunucusu (health) dinleniyor")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			a.Log.Fatal().Err(err).Msg("HTTP sunucusu başlatılamadı")
+			a.Log.Fatal().Str("event", logger.EventHttpServerFail).Err(err).Msg("HTTP sunucusu başlatılamadı")
 		}
 	}()
 	return srv
@@ -81,19 +84,20 @@ func (a *App) waitForShutdown(grpcSrv *server.GrpcServer, httpSrv *http.Server) 
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	a.Log.Warn().Msg("Kapatma sinyali alındı, servisler durduruluyor...")
+	//[ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+	a.Log.Warn().Str("event", logger.EventSystemShutdown).Msg("Kapatma sinyali alındı, servisler durduruluyor...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	server.Stop(grpcSrv)
-	a.Log.Info().Msg("gRPC sunucusu durduruldu.")
+	a.Log.Info().Str("event", logger.EventGrpcServerStop).Msg("gRPC sunucusu durduruldu.")
 
 	if err := httpSrv.Shutdown(ctx); err != nil {
-		a.Log.Error().Err(err).Msg("HTTP sunucusu düzgün kapatılamadı.")
+		a.Log.Error().Str("event", logger.EventHttpServerStop).Err(err).Msg("HTTP sunucusu düzgün kapatılamadı.")
 	} else {
-		a.Log.Info().Msg("HTTP sunucusu durduruldu.")
+		a.Log.Info().Str("event", logger.EventHttpServerStop).Msg("HTTP sunucusu durduruldu.")
 	}
 
-	a.Log.Info().Msg("Servis başarıyla durduruldu.")
+	a.Log.Info().Str("event", logger.EventSystemShutdown).Msg("Servis başarıyla durduruldu.")
 }

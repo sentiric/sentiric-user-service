@@ -44,8 +44,9 @@ func (s *userService) GetUser(ctx context.Context, req *userv1.GetUserRequest) (
 				Msg("Kullanıcı bulunamadı")
 			return nil, status.Errorf(codes.NotFound, "Kullanıcı bulunamadı: %s", req.GetUserId())
 		}
+		// [ARCH-COMPLIANCE] DB_ERROR hardcoded değeri düzeltildi
 		l.Error().
-			Str("event", "DB_ERROR").
+			Str("event", logger.EventDatabaseError).
 			Err(err).
 			Msg("Veritabanı hatası")
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
@@ -81,8 +82,9 @@ func (s *userService) FindUserByContact(ctx context.Context, req *userv1.FindUse
 
 			return nil, status.Errorf(codes.NotFound, "Kullanıcı bulunamadı: %s", contactValue)
 		}
+		// [ARCH-COMPLIANCE] DB_ERROR hardcoded değeri düzeltildi
 		l.Error().
-			Str("event", "DB_ERROR").
+			Str("event", logger.EventDatabaseError).
 			Err(err).
 			Msg("Veritabanı hatası")
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
@@ -125,8 +127,9 @@ func (s *userService) CreateUser(ctx context.Context, req *userv1.CreateUserRequ
 				Msg("Kullanıcı/Kontak zaten mevcut")
 			return nil, status.Errorf(codes.AlreadyExists, "Bu iletişim bilgisi zaten kayıtlı: %s", normalizedValue)
 		}
+		// [ARCH-COMPLIANCE] USER_CREATION_FAIL hardcoded değeri düzeltildi
 		l.Error().
-			Str("event", "USER_CREATION_FAIL").
+			Str("event", logger.EventUserCreationFail).
 			Err(err).
 			Msg("Kullanıcı oluşturma hatası")
 		return nil, status.Errorf(codes.Internal, "Kullanıcı oluşturulamadı: %v", err)
@@ -217,14 +220,15 @@ func (s *userService) CreateSipCredential(ctx context.Context, req *userv1.Creat
 	err = s.repo.CreateSipCredential(ctx, req.UserId, req.SipUsername, ha1Hash)
 	if err != nil {
 		if errors.Is(err, repository.ErrConflict) {
+			//[ARCH-COMPLIANCE] SIP_CRED_CONFLICT hardcoded değeri düzeltildi
 			l.Warn().
-				Str("event", "SIP_CRED_CONFLICT").
+				Str("event", logger.EventSipCredConflict).
 				Dict("attributes", zerolog.Dict().
 					Str("username", req.SipUsername)).
 				Msg("SIP kullanıcı adı çakışması")
 			return nil, status.Errorf(codes.AlreadyExists, "Bu SIP kullanıcı adı zaten mevcut")
 		}
-		l.Error().Err(err).Msg("Veritabanı hatası")
+		l.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("Veritabanı hatası")
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
 	}
 
@@ -248,12 +252,13 @@ func (s *userService) DeleteSipCredential(ctx context.Context, req *userv1.Delet
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "Silinecek SIP kullanıcısı bulunamadı")
 		}
-		l.Error().Err(err).Msg("Veritabanı hatası")
+		l.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("Veritabanı hatası")
 		return nil, status.Errorf(codes.Internal, "Veritabanı hatası")
 	}
 
+	// [ARCH-COMPLIANCE] SIP_CRED_DELETED hardcoded değeri düzeltildi
 	l.Info().
-		Str("event", "SIP_CRED_DELETED").
+		Str("event", logger.EventSipCredDeleted).
 		Dict("attributes", zerolog.Dict().
 			Str("sip_username", req.SipUsername)).
 		Msg("SIP kimliği silindi")
@@ -298,7 +303,8 @@ func (s *userService) GetAgentProfile(ctx context.Context, req *userv1.GetAgentP
 	}
 
 	if user.UserType != "agent" && user.UserType != "supervisor" {
-		l.Warn().Str("user_id", req.UserId).Str("type", user.UserType).Msg("Ajan olmayan kullanıcı profili istendi")
+		// [ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi
+		l.Warn().Str("event", logger.EventAgentProfileError).Str("user_id", req.UserId).Str("type", user.UserType).Msg("Ajan olmayan kullanıcı profili istendi")
 		return nil, status.Errorf(codes.PermissionDenied, "Bu kullanıcı bir ajan değil")
 	}
 
@@ -315,7 +321,8 @@ func (s *userService) GetAgentProfile(ctx context.Context, req *userv1.GetAgentP
 			}
 			// DB'ye de yazalım ki bir dahaki sefere bulunsun
 			if err := s.repo.UpsertAgentProfile(ctx, defaultProfile, user.TenantId); err != nil {
-				l.Error().Err(err).Msg("Varsayılan ajan profili oluşturulamadı")
+				// [ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi
+				l.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("Varsayılan ajan profili oluşturulamadı")
 			}
 			return &userv1.GetAgentProfileResponse{Profile: defaultProfile}, nil
 		}

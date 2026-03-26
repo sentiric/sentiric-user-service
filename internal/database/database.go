@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/rs/zerolog"
+	"github.com/sentiric/sentiric-user-service/internal/logger"
 )
 
 // Connect connects to the database with a retry mechanism.
@@ -18,7 +19,8 @@ func Connect(url string, maxRetries int, log zerolog.Logger) (*sql.DB, error) {
 
 	config, err := pgxpool.ParseConfig(url)
 	if err != nil {
-		log.Fatal().Err(err).Msg("PostgreSQL URL parse edilemedi")
+		// [ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+		log.Fatal().Str("event", logger.EventDatabaseConnFailed).Err(err).Msg("PostgreSQL URL parse edilemedi")
 	}
 
 	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
@@ -31,17 +33,25 @@ func Connect(url string, maxRetries int, log zerolog.Logger) (*sql.DB, error) {
 			db.SetMaxIdleConns(2)
 			db.SetMaxOpenConns(5)
 			if pingErr := db.Ping(); pingErr == nil {
-				log.Info().Msg("Veritabanına bağlantı başarılı (Simple Protocol Mode).")
+				// [ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+				log.Info().Str("event", logger.EventDatabaseConnSuccess).Msg("Veritabanına bağlantı başarılı (Simple Protocol Mode).")
 				return db, nil
 			} else {
 				err = pingErr
 				db.Close()
 			}
 		}
-		log.Warn().Err(err).Int("attempt", i+1).Int("max_attempts", maxRetries).Msg("Veritabanına bağlanılamadı, 5 saniye sonra tekrar denenecek...")
+		// [ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+		log.Warn().
+			Str("event", logger.EventDatabaseConnFailed).
+			Err(err).
+			Int("attempt", i+1).
+			Int("max_attempts", maxRetries).
+			Msg("Veritabanına bağlanılamadı, 5 saniye sonra tekrar denenecek...")
 		time.Sleep(5 * time.Second)
 	}
 
-	log.Fatal().Err(err).Msgf("Veritabanına bağlanılamadı (%d deneme)", maxRetries)
+	// [ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+	log.Fatal().Str("event", logger.EventDatabaseConnFailed).Err(err).Msgf("Veritabanına bağlanılamadı (%d deneme)", maxRetries)
 	return nil, err
 }

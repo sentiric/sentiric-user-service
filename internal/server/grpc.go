@@ -31,7 +31,8 @@ type server struct {
 func NewGrpcServer(svc service.UserService, cfg *config.Config, log zerolog.Logger) *GrpcServer {
 	creds, err := loadServerTLS(cfg.CertPath, cfg.KeyPath, cfg.CaPath, log)
 	if err != nil {
-		log.Fatal().Err(err).Msg("TLS kimlik bilgileri yüklenemedi")
+		// [ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+		log.Fatal().Str("event", logger.EventTlsLoadFail).Err(err).Msg("TLS kimlik bilgileri yüklenemedi")
 	}
 
 	grpcServer := grpc.NewServer(grpc.Creds(creds))

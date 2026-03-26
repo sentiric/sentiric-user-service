@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog"
 	userv1 "github.com/sentiric/sentiric-contracts/gen/go/sentiric/user/v1"
+	"github.com/sentiric/sentiric-user-service/internal/logger"
 	"github.com/sentiric/sentiric-user-service/internal/repository"
 )
 
@@ -33,7 +34,8 @@ func (r *PostgresRepository) FetchUserByID(ctx context.Context, userID string) (
 		if err == sql.ErrNoRows {
 			return nil, repository.ErrNotFound
 		}
-		r.log.Error().Err(err).Str("user_id", userID).Msg("Veritabanı sorgu hatası")
+		//[ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+		r.log.Error().Str("event", logger.EventDatabaseError).Err(err).Str("user_id", userID).Msg("Veritabanı sorgu hatası")
 		return nil, repository.ErrDatabase
 	}
 	if name.Valid {
@@ -67,7 +69,8 @@ func (r *PostgresRepository) FetchUserByContact(ctx context.Context, contactType
 		if err == sql.ErrNoRows {
 			return nil, repository.ErrNotFound
 		}
-		r.log.Error().Err(err).Msg("Veritabanı sorgu hatası")
+		// [ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+		r.log.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("Veritabanı sorgu hatası")
 		return nil, repository.ErrDatabase
 	}
 	if name.Valid {
@@ -89,6 +92,8 @@ func (r *PostgresRepository) FetchUserByContact(ctx context.Context, contactType
 func (r *PostgresRepository) CreateUser(ctx context.Context, user *userv1.User, initialContact *userv1.CreateUserRequest_InitialContact, normalizedContactValue string) (*userv1.User, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
+		// [ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+		r.log.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("Veritabanı transaction başlatılamadı")
 		return nil, repository.ErrDatabase
 	}
 	defer tx.Rollback()
@@ -97,6 +102,8 @@ func (r *PostgresRepository) CreateUser(ctx context.Context, user *userv1.User, 
 	var newUserID string
 	err = tx.QueryRowContext(ctx, userQuery, user.Name, user.TenantId, user.UserType, user.PreferredLanguageCode).Scan(&newUserID)
 	if err != nil {
+		// [ARCH-COMPLIANCE] SUTS v4.0 event eklendi.
+		r.log.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("Kullanıcı insert edilemedi")
 		return nil, repository.ErrDatabase
 	}
 
@@ -106,10 +113,13 @@ func (r *PostgresRepository) CreateUser(ctx context.Context, user *userv1.User, 
 		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
 			return nil, repository.ErrConflict
 		}
+		// [ARCH-COMPLIANCE] SUTS v4.0 event eklendi.
+		r.log.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("İletişim bilgisi insert edilemedi")
 		return nil, repository.ErrDatabase
 	}
 
 	if err := tx.Commit(); err != nil {
+		r.log.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("Veritabanı transaction commit edilemedi")
 		return nil, repository.ErrDatabase
 	}
 
@@ -128,7 +138,8 @@ func (r *PostgresRepository) FetchSipCredentials(ctx context.Context, sipUsernam
 		if err == sql.ErrNoRows {
 			return "", "", "", repository.ErrNotFound
 		}
-		r.log.Error().Err(err).Msg("SIP kimlik sorgu hatası")
+		//[ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
+		r.log.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("SIP kimlik sorgu hatası")
 		return "", "", "", repository.ErrDatabase
 	}
 	return resUserID, resTenantID, resHA1Hash, nil
@@ -141,6 +152,7 @@ func (r *PostgresRepository) CreateSipCredential(ctx context.Context, userID, si
 		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
 			return repository.ErrConflict
 		}
+		r.log.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("SIP kimlik kayıt hatası")
 		return repository.ErrDatabase
 	}
 	return nil
@@ -150,6 +162,7 @@ func (r *PostgresRepository) DeleteSipCredential(ctx context.Context, sipUsernam
 	query := `DELETE FROM sip_credentials WHERE sip_username = $1`
 	result, err := r.db.ExecContext(ctx, query, sipUsername)
 	if err != nil {
+		r.log.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("SIP kimlik silme hatası")
 		return repository.ErrDatabase
 	}
 
@@ -166,6 +179,7 @@ func (r *PostgresRepository) FetchContactsForUser(ctx context.Context, userID st
 	query := `SELECT id, user_id, contact_type, contact_value, is_primary FROM contacts WHERE user_id = $1`
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
+		r.log.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("İletişim bilgileri sorgu hatası")
 		return nil, repository.ErrDatabase
 	}
 	defer rows.Close()
