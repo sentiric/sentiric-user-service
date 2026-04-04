@@ -27,7 +27,6 @@ func (r *PostgresRepository) GetAgentProfile(ctx context.Context, userID string)
 		&profile.MaxConcurrentCalls,
 		&statusStr,
 	)
-
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, repository.ErrNotFound
@@ -63,7 +62,6 @@ func (r *PostgresRepository) UpsertAgentProfile(ctx context.Context, profile *us
 		profile.MaxConcurrentCalls,
 		profile.Status,
 	)
-
 	if err != nil {
 		// [ARCH-COMPLIANCE] SUTS v4.0 event etiketi eklendi.
 		r.log.Error().Str("event", logger.EventDatabaseError).Err(err).Msg("Ajan profili kaydedilemedi")
